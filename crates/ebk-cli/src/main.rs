@@ -1,8 +1,10 @@
+mod batch;
 mod epub;
+mod zipout;
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -64,6 +66,22 @@ enum Command {
         #[arg(long, default_value_t = ebk::MAX_MEMBER_LEN)]
         max_member: u64,
     },
+    /// Write the members of an EBK file as an EPUB file (the same files; not the ZIP file the book came from)
+    Epub {
+        file: PathBuf,
+        /// Output file, which must not exist (default: the input with the extension .epub)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Do not compress: faster to write, for an EPUB that is read once and thrown away
+        #[arg(long)]
+        store: bool,
+        /// Write nothing if the members add up to more than this many bytes
+        #[arg(long, default_value_t = DEFAULT_MAX_OUTPUT)]
+        max_output: u64,
+        /// Write nothing if a member is larger than this many bytes (each member is held in memory)
+        #[arg(long, default_value_t = ebk::MAX_MEMBER_LEN)]
+        max_member: u64,
+    },
     /// Read every member and check it; with --epub, also compare with the EPUB it was made from
     Verify {
         file: PathBuf,
@@ -87,10 +105,20 @@ fn main() -> ExitCode {
             report(info);
         }
     }));
+    // started by a double click or with files dropped on it: convert them, no command needed
+    let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    if batch::wanted(&args) {
+        return batch::run(&args);
+    }
     let result = match Cli::parse().command {
         Command::Convert { input, output, block_size, quality, threads, max_input, code_page, keep_jpeg } => {
-            convert(&input, output, Options { block_size, quality, code_page, ..Options::default() }, threads, max_input, keep_jpeg)
+            convert(&input, output, Options { block_size, quality, code_page, ..Options::default() }, threads, max_input, keep_jpeg).map(|book| {
+                let code_page = book.charset_len.map_or(String::new(), |n| format!(", code page of {n} characters"));
+                println!("{}: {} -> {} bytes ({:.4}), {} members, {} text blocks{code_page}",
+                         book.output.display(), book.epub_len, book.file_len, book.file_len as f64 / book.epub_len as f64, book.members, book.blocks);
+            })
         }
+        Command::Epub { file, output, store, max_output, max_member } => to_epub(&file, output, store, max_output, max_member),
         Command::Info { file, members } => info(&file, members),
         Command::Extract { file, dir, max_output, max_member } => extract(&file, &dir, max_output, max_member),
         Command::Verify { file, epub, max_output, max_member } => verify(&file, epub.as_deref(), max_output, max_member),
@@ -121,7 +149,17 @@ fn code_page(arg: &str) -> Result<CodePage, String> {
     }
 }
 
-fn convert(input: &Path, output: Option<PathBuf>, mut opts: Options, threads: Option<usize>, max_input: u64, keep_jpeg: bool) -> Result<()> {
+/// What `convert` wrote.
+struct Converted {
+    output: PathBuf,
+    epub_len: u64,
+    file_len: u64,
+    members: usize,
+    blocks: usize,
+    charset_len: Option<usize>,
+}
+
+fn convert(input: &Path, output: Option<PathBuf>, mut opts: Options, threads: Option<usize>, max_input: u64, keep_jpeg: bool) -> Result<Converted> {
     let output = output.unwrap_or_else(|| input.with_extension("ebk"));
     if std::fs::canonicalize(&output).is_ok_and(|out| std::fs::canonicalize(input).is_ok_and(|inp| inp == out)) {
         bail!("the output would replace the input; name another file with -o");
@@ -190,10 +228,7 @@ fn convert(input: &Path, output: Option<PathBuf>, mut opts: Options, threads: Op
 
     write_new(&output, &out)?;
     let epub_len = std::fs::metadata(input)?.len();
-    let code_page = summary.charset_len.map_or(String::new(), |n| format!(", code page of {n} characters"));
-    println!("{}: {} -> {} bytes ({:.4}), {} members, {} text blocks{code_page}",
-             output.display(), epub_len, summary.file_len, summary.file_len as f64 / epub_len as f64, archive.len(), reader.blocks().len());
-    Ok(())
+    Ok(Converted { output, epub_len, file_len: summary.file_len, members: archive.len(), blocks: reader.blocks().len(), charset_len: summary.charset_len })
 }
 
 /// Writes `data` under a temporary name next to `path` and renames it, so that `path` is never half written.
@@ -311,6 +346,54 @@ fn extract(file: &Path, dir: &Path, max_output: u64, max_member: u64) -> Result<
         written.with_context(|| format!("stopped after writing {i} of {} members to {}", reader.member_count(), dir.display()))?;
     }
     println!("{} members written to {}", reader.member_count(), dir.display());
+    Ok(())
+}
+
+/// The members as an EPUB file: `mimetype` first and not compressed, as EPUB asks, then the rest in member order.
+fn to_epub(file: &Path, output: Option<PathBuf>, store: bool, max_output: u64, max_member: u64) -> Result<()> {
+    let output = output.unwrap_or_else(|| file.with_extension("epub"));
+    // never replaced: next to the EBK file there may be the EPUB it was made from
+    if output.exists() {
+        bail!("{} exists already; name another file with -o", output.display());
+    }
+    let mut reader = open(file)?;
+    reader.set_member_limit(max_member);
+    let Some(mimetype) = reader.find("mimetype") else { bail!("{} has no member \"mimetype\": it was not made from an EPUB", file.display()) };
+    let mut total = 0u64;
+    for (i, m) in reader.members().enumerate() {
+        let path = m.path.escape_debug();
+        if !reader.readable(i) {
+            bail!("\"{path}\" is stored in a way this version cannot read (storage mode {}); nothing was written", m.mode.to_u8());
+        }
+        if m.raw_len > max_member {
+            bail!("\"{path}\" is larger than {max_member} bytes (raise --max-member to go on); nothing was written");
+        }
+        total = total.saturating_add(m.raw_len);
+    }
+    if total > max_output {
+        bail!("the members add up to more than {max_output} bytes (raise --max-output to go on); nothing was written");
+    }
+
+    // under a temporary name, so that the output is never there half written
+    let temp = output.with_file_name(format!(".ebk-{}.tmp", std::process::id()));
+    let out = File::options().write(true).create_new(true).open(&temp).with_context(|| format!("cannot create {}", temp.display()))?;
+    let written = (|| -> Result<()> {
+        let mut zip = zipout::ZipWriter::new(BufWriter::new(out));
+        zip.add("mimetype", &reader.read(mimetype)?, false)?;
+        // in member order, so that each text block is decoded once
+        for i in (0..reader.member_count()).filter(|&i| i != mimetype) {
+            let path = reader.member(i).unwrap().path.to_owned();
+            zip.add(&path, &reader.read(i)?, !store)?;
+        }
+        let file = zip.finish()?.into_inner().map_err(|e| e.into_error())?;
+        file.sync_all()?;
+        // not `rename`, which replaces: a file that appeared meanwhile stays
+        std::fs::hard_link(&temp, &output).or_else(|_| if output.exists() { Err(std::io::ErrorKind::AlreadyExists.into()) } else { std::fs::rename(&temp, &output) })?;
+        Ok(())
+    })();
+    let _ = std::fs::remove_file(&temp);
+    written.with_context(|| format!("cannot write {}", output.display()))?;
+    println!("{}: {} members", output.display(), reader.member_count());
     Ok(())
 }
 

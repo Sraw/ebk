@@ -694,6 +694,38 @@ def main():
     if os.path.exists(p("bomb-out")):
         print("FAIL  bomb-out was created")
         failures.append("bomb-out")
+
+    # --- the members as an EPUB again
+    expect("epub: the members of an EBK file as an EPUB", True, ["epub", p("pictures.ebk"), "-o", p("pictures.out.epub")], "12 members")
+    expect("epub: that EPUB holds the same files", True, ["verify", p("pictures.ebk"), "--epub", p("pictures.out.epub")], "identical to the EPUB")
+    expect("epub: an existing file is not replaced", False, ["epub", p("pictures.ebk"), "-o", p("pictures.out.epub")], "exists already")
+    expect("epub: nor the EPUB next to the EBK file", False, ["epub", p("pictures.ebk")], "exists already")
+    expect("epub: without compression", True, ["epub", p("pictures.ebk"), "-o", p("pictures.stored.epub"), "--store"], "12 members")
+    expect("epub: a file that was not made from an EPUB", False, ["epub", p("lepton0.ebk"), "-o", p("lepton0.epub")], "no member \"mimetype\"")
+    with zipfile.ZipFile(p("pictures.out.epub")) as packed, zipfile.ZipFile(p("pictures.stored.epub")) as stored:
+        first = packed.infolist()[0]
+        well_formed = (packed.testzip() is None and stored.testzip() is None and (first.filename, first.compress_type) == ("mimetype", 0)
+                       and {i.compress_type for i in stored.infolist()} == {0} and 8 in {i.compress_type for i in packed.infolist()})
+    print(f"{'ok  ' if well_formed else 'FAIL'}  epub: another ZIP reader reads both, mimetype is first and stored")
+    if not well_formed:
+        failures.append("epub: ZIP structure")
+    if os.path.exists(p("lepton0.epub")):
+        print("FAIL  lepton0.epub was created")
+        failures.append("lepton0.epub")
+
+    # --- started without a command: every EPUB of a folder
+    os.makedirs(p("folder"))
+    for name in ("plain.epub", "pictures.epub"):
+        shutil.copy(p(name), p("folder"))
+    open(p("folder/broken.epub"), "wb").write(b"not a ZIP file")
+    english = dict(os.environ, LANG="en_US.UTF-8", LC_ALL="en_US.UTF-8")
+    for name, needle in (("folder mode: converts what it can and says what failed", "2 converted"), ("folder mode: a second run converts nothing again", "2 skipped")):
+        r = subprocess.run([binary, p("folder")], capture_output=True, text=True, env=english)
+        good = r.returncode == 1 and needle in r.stdout and "1 failed: broken.epub" in r.stdout and sorted(os.listdir(p("folder"))) == ["broken.epub", "ebk-convert.log", "pictures.ebk", "pictures.epub", "plain.ebk", "plain.epub"]
+        print(f"{'ok  ' if good else 'FAIL'}  {name}: exit {r.returncode}  {r.stdout.strip().splitlines()[-2][:100] if r.stdout.strip() else ''}")
+        if not good:
+            failures.append(name)
+    expect("folder mode: what it wrote is the book", True, ["verify", p("folder/pictures.ebk"), "--epub", p("pictures.epub")], "identical to the EPUB")
     print(f"\n{len(failures)} failures" + (": " + "; ".join(failures) if failures else ""))
     return 1 if failures else 0
 
