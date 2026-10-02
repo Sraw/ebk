@@ -48,15 +48,18 @@ removed and made again when opened. Without an EPUB reader, install one first.
 
 要让双击 .ebk 起作用，先做一次 / For the double click to work, once:
 Windows: 双击一次 ebk.exe（像上面那样转换书时就会做）。之后程序不要挪地方；挪了就再双击一次。
-         不想要了：在命令行运行 ebk associate --remove 。
+         不想要了：在命令行运行 ebk associate --remove （以后双击 ebk.exe 也不会再接管）。
+         如果你已经给 .ebk 选过别的程序，它不改你的选择。
          Double-click ebk.exe once (converting books as above does it). Leave the program where it is;
-         if you move it, double-click it again. To undo: ebk associate --remove in a command prompt.
+         if you move it, double-click it again. To undo: ebk associate --remove in a command prompt (the
+         program then leaves the file type alone). A program you chose for .ebk files yourself stays.
 macOS:   把 EBK.app 拖进"应用程序"，打开一次（第一次同样要在"隐私与安全性"里点"仍要打开"）。
          之后双击 .ebk 就会用它打开；把 EPUB 文件拖到 EBK.app 上也能转换。
          Drag EBK.app into Applications and open it once (the first time, again "Open Anyway" in Privacy &
          Security). From then on .ebk files open with it; EPUB files dropped on EBK.app are converted.
-Linux:   在终端里运行一次 ./ebk associate （撤销：./ebk associate --remove）。
-         Run ./ebk associate once in a terminal (to undo: ./ebk associate --remove).
+Linux:   在终端里运行一次 ./ebk associate （撤销：./ebk associate --remove）。之后程序不要挪地方；挪了就再运行一次。
+         Run ./ebk associate once in a terminal (to undo: ./ebk associate --remove). Leave the program
+         where it is; if you move it, run that again.
 
 在阅读器和手机上读 / On e-readers and phones
 --------------------------------------------

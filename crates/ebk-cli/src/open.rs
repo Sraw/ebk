@@ -84,8 +84,10 @@ pub fn cached(file: &Path, cache: &Path) -> Result<PathBuf> {
     let stem: String = file.file_stem().unwrap_or_default().to_string_lossy().chars().take(80).collect();
     let epub = folder.join(format!("{}.epub", stem.trim()));
 
+    std::fs::create_dir_all(&folder).with_context(|| format!("cannot create {}", folder.display()))?;
+    // first: another start of the program tidying the cache now leaves a book alone that was just opened
+    let _ = File::create(folder.join(USED));
     if !epub.is_file() {
-        std::fs::create_dir_all(&folder).with_context(|| format!("cannot create {}", folder.display()))?;
         tidy(cache, meta.len().saturating_mul(2), &folder);
         let written = crate::to_epub(file, &epub, false, crate::DEFAULT_MAX_OUTPUT, ebk::MAX_MEMBER_LEN);
         // started twice at once, the other start may have written it
@@ -96,7 +98,6 @@ pub fn cached(file: &Path, cache: &Path) -> Result<PathBuf> {
             }
         }
     }
-    let _ = File::create(folder.join(USED));
     tidy(cache, 0, &folder);
     Ok(epub)
 }
@@ -107,8 +108,9 @@ fn fnv1a(bytes: &[u8]) -> u64 {
 }
 
 /// Removes the least recently opened books until `room` more bytes fit under the limit; never `keep`. Files
-/// that cannot be removed (a reading program has them open, on Windows) stay. What a stopped run left is removed
-/// once it is older than ten minutes.
+/// that cannot be removed (a reading program has them open, on Windows) stay, and so does a book opened in the
+/// last ten minutes (another start of the program may be about to hand it on). What a stopped run left is
+/// removed once it is older than ten minutes.
 fn tidy(cache: &Path, room: u64, keep: &Path) {
     let now = SystemTime::now();
     let old = |t: SystemTime| now.duration_since(t).unwrap_or_default() > Duration::from_secs(600);
@@ -136,7 +138,10 @@ fn tidy(cache: &Path, room: u64, keep: &Path) {
             }
         }
         let used = used.unwrap_or(SystemTime::UNIX_EPOCH);
-        if !epub && old(used) {
+        if !old(used) {
+            continue;
+        }
+        if !epub {
             let _ = std::fs::remove_dir_all(&folder);
             continue;
         }
@@ -162,7 +167,7 @@ fn launch(epub: &Path) -> Result<()> {
         "there is no program for EPUB files on this computer. Install a reader (Calibre, Thorium Reader, SumatraPDF, …) and try again."
     };
     let run = |program: &OsString| -> Result<()> {
-        let status = std::process::Command::new(program).arg(epub).status().with_context(|| format!("cannot start {}", program.to_string_lossy()))?;
+        let status = std::process::Command::new(program).arg(epub).status().with_context(|| format!("{} (cannot start {})", no_reader(), program.to_string_lossy()))?;
         if !status.success() {
             bail!("{} ({}: {status})", no_reader(), program.to_string_lossy());
         }
@@ -204,9 +209,19 @@ pub fn associate(remove: bool) -> Result<String> {
     {
         if remove {
             windows::unregister()?;
+            // and the next double click on the program does not take the file type again
+            windows::set_wanted(false)?;
             return Ok(if chinese() { ".ebk 文件不再由这个程序打开。".into() } else { ".ebk files are no longer opened by this program.".into() });
         }
         windows::register(&exe)?;
+        windows::set_wanted(true)?;
+        if let Some(other) = windows::user_choice().filter(|id| id != windows::PROG_ID) {
+            return Ok(if chinese() {
+                format!("已登记 {}，但你在 Windows 里给 .ebk 文件选了别的程序（{other}）。要换回来：右键一本 .ebk → 打开方式 → 选择其他应用 → EBK 电子书，勾选\"始终\"。", exe.display())
+            } else {
+                format!("{} is registered, but in Windows you chose another program for .ebk files ({other}). To change that: right-click a book → Open with → Choose another app → EBK book, with \"Always\".", exe.display())
+            });
+        }
         Ok(if chinese() { format!("双击 .ebk 文件时由 {} 打开。", exe.display()) } else { format!("A double click on an .ebk file opens it with {}.", exe.display()) })
     }
     #[cfg(target_os = "macos")]
@@ -220,13 +235,26 @@ pub fn associate(remove: bool) -> Result<String> {
     }
 }
 
-/// On Windows, started by a double click: the .ebk file type is given to this program unless it already has
-/// it - from the same place - or the user gave it to another. Gives a line for the window when it did something.
+/// On Windows, started by a double click: the .ebk file type is given to this program, unless it has it already
+/// (from the same place), another program or the user's choice has it, the user said no (`associate --remove`),
+/// or the program runs from the temporary folder (opened inside a ZIP file), which is cleaned later.
+/// Gives a line for the window when it did something.
 #[cfg(windows)]
 pub fn associate_if_needed() -> Option<String> {
     let exe = std::env::current_exe().ok()?;
-    if windows::registered(&exe) {
+    let temporary = |path: &Path| std::fs::canonicalize(path).ok().map(|p| p.to_string_lossy().to_lowercase());
+    if let (Some(exe), Some(temp)) = (temporary(&exe), temporary(&std::env::temp_dir())) {
+        if exe.starts_with(&temp) {
+            return None;
+        }
+    }
+    if !windows::wanted() || windows::user_choice().is_some_and(|id| id != windows::PROG_ID) {
         return None;
+    }
+    match windows::owner() {
+        Some(id) if id != windows::PROG_ID => return None,
+        Some(_) if windows::ours(&exe) => return None,
+        _ => {}
     }
     windows::register(&exe).ok()?;
     Some(if chinese() {
@@ -245,10 +273,11 @@ mod windows {
 
     use anyhow::{bail, Result};
 
+    const HKEY_CLASSES_ROOT: isize = 0x8000_0000u32 as i32 as isize;
     const HKEY_CURRENT_USER: isize = 0x8000_0001u32 as i32 as isize;
     const REG_SZ: u32 = 1;
     const RRF_RT_REG_SZ: u32 = 2;
-    const PROG_ID: &str = "EBK.Book";
+    pub const PROG_ID: &str = "EBK.Book";
 
     #[link(name = "shell32")]
     extern "system" {
@@ -264,6 +293,7 @@ mod windows {
         fn RegSetKeyValueW(key: isize, subkey: *const u16, name: *const u16, kind: u32, data: *const c_void, len: u32) -> i32;
         fn RegGetValueW(key: isize, subkey: *const u16, name: *const u16, flags: u32, kind: *mut u32, data: *mut c_void, len: *mut u32) -> i32;
         fn RegDeleteTreeW(key: isize, subkey: *const u16) -> i32;
+        fn RegDeleteKeyValueW(key: isize, subkey: *const u16, name: *const u16) -> i32;
     }
 
     fn wide(text: impl AsRef<OsStr>) -> Vec<u16> {
@@ -287,40 +317,67 @@ mod windows {
         format!("\"{}\" \"%1\"", exe.display())
     }
 
-    fn set(subkey: &str, value: &str) -> Result<()> {
+    fn set(subkey: &str, name: Option<&str>, value: &str) -> Result<()> {
         let data = wide(value);
-        let code = unsafe { RegSetKeyValueW(HKEY_CURRENT_USER, wide(subkey).as_ptr(), null(), REG_SZ, data.as_ptr().cast(), (data.len() * 2) as u32) };
+        let name = name.map(wide);
+        let name = name.as_ref().map_or(null(), |n| n.as_ptr());
+        let code = unsafe { RegSetKeyValueW(HKEY_CURRENT_USER, wide(subkey).as_ptr(), name, REG_SZ, data.as_ptr().cast(), (data.len() * 2) as u32) };
         if code != 0 {
             bail!("cannot write HKEY_CURRENT_USER\\{subkey} (error {code})");
         }
         Ok(())
     }
 
-    fn get(subkey: &str) -> Option<String> {
+    fn get(root: isize, subkey: &str, name: Option<&str>) -> Option<String> {
         let mut data = vec![0u16; 2048];
         let mut len = (data.len() * 2) as u32;
-        let code = unsafe { RegGetValueW(HKEY_CURRENT_USER, wide(subkey).as_ptr(), null(), RRF_RT_REG_SZ, null_mut(), data.as_mut_ptr().cast(), &mut len) };
-        (code == 0).then(|| String::from_utf16_lossy(&data[..(len as usize / 2).saturating_sub(1)]))
+        let name = name.map(wide);
+        let name = name.as_ref().map_or(null(), |n| n.as_ptr());
+        let code = unsafe { RegGetValueW(root, wide(subkey).as_ptr(), name, RRF_RT_REG_SZ, null_mut(), data.as_mut_ptr().cast(), &mut len) };
+        (code == 0).then(|| String::from_utf16_lossy(&data[..(len as usize / 2).saturating_sub(1)])).filter(|v| !v.is_empty())
     }
 
-    /// Whether .ebk files go to this program (in this place), or the user has chosen another for them.
-    pub fn registered(exe: &Path) -> bool {
-        let chosen = get(r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.ebk\UserChoice");
-        chosen.is_some() || get(&format!(r"Software\Classes\{PROG_ID}\shell\open\command")).is_some_and(|c| c == command(exe))
+    /// The program the user chose for .ebk files in Windows ("Open with", "Always"), as a ProgID.
+    pub fn user_choice() -> Option<String> {
+        get(HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.ebk\UserChoice", Some("ProgId"))
     }
 
+    /// The ProgID .ebk files have, for this user or for the computer.
+    pub fn owner() -> Option<String> {
+        get(HKEY_CLASSES_ROOT, ".ebk", None)
+    }
+
+    /// Whether the open command of the ProgID is this program, in this place.
+    pub fn ours(exe: &Path) -> bool {
+        get(HKEY_CURRENT_USER, &format!(r"Software\Classes\{PROG_ID}\shell\open\command"), None).is_some_and(|c| c == command(exe))
+    }
+
+    /// Whether the program may take the file type when it is started (not after `associate --remove`).
+    pub fn wanted() -> bool {
+        get(HKEY_CURRENT_USER, r"Software\EBK", Some("Associate")).is_none_or(|v| v != "no")
+    }
+
+    pub fn set_wanted(yes: bool) -> Result<()> {
+        set(r"Software\EBK", Some("Associate"), if yes { "yes" } else { "no" })
+    }
+
+    /// The ProgID and its open command; the type .ebk gets it when no other program has it.
     pub fn register(exe: &Path) -> Result<()> {
         let name = if super::chinese() { "EBK 电子书" } else { "EBK book" };
-        set(&format!(r"Software\Classes\{PROG_ID}"), name)?;
-        set(&format!(r"Software\Classes\{PROG_ID}\shell\open\command"), &command(exe))?;
-        set(r"Software\Classes\.ebk", PROG_ID)?;
+        set(&format!(r"Software\Classes\{PROG_ID}"), None, name)?;
+        set(&format!(r"Software\Classes\{PROG_ID}\shell\open\command"), None, &command(exe))?;
+        match owner() {
+            Some(id) if id != PROG_ID => bail!(".ebk files belong to another program ({id}); choose this one with \"Open with\" in Explorer"),
+            _ => set(r"Software\Classes\.ebk", None, PROG_ID)?,
+        }
         changed();
         Ok(())
     }
 
+    /// The ProgID goes; of the type .ebk only its value naming the ProgID, and only when it names it.
     pub fn unregister() -> Result<()> {
-        if get(r"Software\Classes\.ebk").is_some_and(|id| id == PROG_ID) {
-            unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, wide(r"Software\Classes\.ebk").as_ptr()) };
+        if get(HKEY_CURRENT_USER, r"Software\Classes\.ebk", None).is_some_and(|id| id == PROG_ID) {
+            unsafe { RegDeleteKeyValueW(HKEY_CURRENT_USER, wide(r"Software\Classes\.ebk").as_ptr(), null()) };
         }
         let code = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, wide(format!(r"Software\Classes\{PROG_ID}")).as_ptr()) };
         // 2: it was not there
@@ -355,7 +412,8 @@ mod linux {
 
     /// An argument of `Exec` in a desktop entry: quoted, then escaped once more as a string of the file.
     fn exec_argument(path: &Path) -> Result<String> {
-        let Some(text) = path.to_str().filter(|text| !text.contains(['\n', '\r'])) else {
+        // a "%" GIO looks for before it reads "%%" back as "%"
+        let Some(text) = path.to_str().filter(|text| !text.contains(['\n', '\r', '%'])) else {
             bail!("the path of this program cannot be written into a desktop entry: {}", path.display());
         };
         let mut quoted = String::from("\"");

@@ -5,12 +5,12 @@
 on localized(chinese, english)
 	if (user locale of (system info)) starts with "zh" then return chinese
 	return english
-end say
+end localized
 
 on ebkCommand()
 	-- the language of the user for the messages of the program, which runs without one
 	return "LANG=" & quoted form of ((user locale of (system info)) & ".UTF-8") & " " & quoted form of (POSIX path of (path to resource "ebk"))
-end program
+end ebkCommand
 
 on run
 	display dialog localized("把 EPUB 文件（或装着 EPUB 的文件夹）拖到 EBK 上，就会在旁边生成 .ebk 文件。" & return & return & "双击 .ebk 文件，就会用这台 Mac 上的 EPUB 阅读器（\"图书\"或你选的其它阅读器）打开它。", "Drop EPUB files (or folders with EPUB files) on EBK to convert them to .ebk files next to them." & return & return & "A double click on an .ebk file opens it in the EPUB reader of this Mac (Books, or the one you chose).") buttons {"OK"} default button 1 with title "EBK"

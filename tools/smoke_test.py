@@ -183,6 +183,12 @@ def main():
         except OSError:
             gone = True
         check("Windows: associate --remove gives the file type back", code == 0 and gone, out)
+        run()
+        try:
+            gone = not command()
+        except OSError:
+            gone = True
+        check("Windows: after that a double click on the program does not take it again", gone)
 
     # --- Windows: in a console window made for it, the program waits for Enter; without one it does not
     if os.name == "nt":
