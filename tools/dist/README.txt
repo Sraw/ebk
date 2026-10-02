@@ -35,11 +35,34 @@ Linux:   如果双击没有反应：在文件夹里打开终端，运行 ./ebk �
 Every file inside is the same as in the original book. An existing file is never replaced, so give it
 a name of its own.
 
-怎么读 .ebk / Reading .ebk books
---------------------------------
-用装了 EBK 插件（ebk.koplugin）的 KOReader：Kobo、Kindle、Android 和电脑。
+在电脑上读 .ebk / Reading .ebk books on a computer
+------------------------------------------------
+双击 .ebk 文件，程序会把它转成 EPUB 放进缓存，再用电脑上已有的 EPUB 阅读器打开
+（Calibre、Thorium Reader、SumatraPDF、macOS 的"图书"等）。同一本书每次打开都是同一个文件，
+阅读器记得读到哪里。缓存最多约 1 GB，久未打开的书会被清掉，下次打开时重新生成。
+没有 EPUB 阅读器的话先装一个。
+A double click on an .ebk file turns it into an EPUB file in a cache and opens that in the EPUB reader the
+computer has (Calibre, Thorium Reader, SumatraPDF, Books on macOS, …). A book opens as the same file every
+time, so the reader remembers where you were. The cache keeps about 1 GB; books not opened for a while are
+removed and made again when opened. Without an EPUB reader, install one first.
+
+要让双击 .ebk 起作用，先做一次 / For the double click to work, once:
+Windows: 双击一次 ebk.exe（像上面那样转换书时就会做）。之后程序不要挪地方；挪了就再双击一次。
+         不想要了：在命令行运行 ebk associate --remove 。
+         Double-click ebk.exe once (converting books as above does it). Leave the program where it is;
+         if you move it, double-click it again. To undo: ebk associate --remove in a command prompt.
+macOS:   把 EBK.app 拖进"应用程序"，打开一次（第一次同样要在"隐私与安全性"里点"仍要打开"）。
+         之后双击 .ebk 就会用它打开；把 EPUB 文件拖到 EBK.app 上也能转换。
+         Drag EBK.app into Applications and open it once (the first time, again "Open Anyway" in Privacy &
+         Security). From then on .ebk files open with it; EPUB files dropped on EBK.app are converted.
+Linux:   在终端里运行一次 ./ebk associate （撤销：./ebk associate --remove）。
+         Run ./ebk associate once in a terminal (to undo: ./ebk associate --remove).
+
+在阅读器和手机上读 / On e-readers and phones
+--------------------------------------------
+用装了 EBK 插件（ebk.koplugin）的 KOReader：Kobo、Kindle、Android 和 Linux。
 （插件在电脑和 Android 上试过；Kobo、Kindle 上还没有在真机上试过。）
-With KOReader and the EBK plug-in (ebk.koplugin): Kobo, Kindle, Android and desktop computers.
+With KOReader and the EBK plug-in (ebk.koplugin): Kobo, Kindle, Android and Linux.
 (The plug-in has been tried on a computer and on Android; not yet on a real Kobo or Kindle.)
 
 其他命令 / Other commands:    ebk help

@@ -39,7 +39,11 @@ deleted, and books converted earlier are skipped. What it did is shown in the wi
 language of the system, and written to `ebk-convert.log` in the folder when there is no window.
 `tools/dist/README.txt` is the text for users that goes into the packages.
 
-To read `.ebk` books: the web page in `reader/`, or KOReader with the plug-in `koreader/ebk.koplugin` (copy the folder
+To read `.ebk` books on a computer: a double click on one (or `ebk open book.ebk`) writes it as an EPUB file into the
+user's cache folder and opens that in the computer's EPUB reader; the same book is always the same file there, and the
+cache is kept below about 1 GB. The program takes the `.ebk` file type when it is double-clicked on Windows, with
+`ebk associate` on Linux; on macOS `EBK.app` (built on a Mac by `tools/dist/macos/build-app.sh`, in the workflow's
+artifact `ebk-macos`) owns it. Elsewhere: the web page in `reader/`, or KOReader with the plug-in `koreader/ebk.koplugin` (copy the folder
 from the package into KOReader's `plugins` folder; `koreader/README.txt`). The plug-in writes the book as an EPUB file
 into KOReader's cache and gives that to KOReader's EPUB engine, so a book looks and behaves as its EPUB does; history,
 reading position and notes belong to the `.ebk` file.
@@ -52,6 +56,8 @@ target/release/ebk verify book.ebk --epub book.epub
 target/release/ebk extract book.ebk out/        # the members as files
 target/release/ebk epub book.ebk -o again.epub  # the members as an EPUB file again (the same files, another ZIP)
 target/release/ebk folder/ a.epub               # no command: convert these, as a double click does for its folder
+target/release/ebk open book.ebk                # read it in this computer's EPUB reader (also: no command, .ebk files)
+target/release/ebk associate                    # a double click on an .ebk file opens it (Windows, Linux; --remove)
 
 tools/dist.sh                                   # dist/: the program for Windows, macOS, Linux; the KOReader plug-in
 

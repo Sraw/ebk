@@ -1,5 +1,6 @@
 mod batch;
 mod epub;
+mod open;
 mod zipout;
 
 use std::collections::HashMap;
@@ -82,6 +83,17 @@ enum Command {
         #[arg(long, default_value_t = ebk::MAX_MEMBER_LEN)]
         max_member: u64,
     },
+    /// Open EBK books in the program this computer reads EPUB files with (each is written as an EPUB file into a cache first)
+    Open {
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+    },
+    /// Make a double click on an .ebk file open it with this program (Windows, Linux)
+    Associate {
+        /// Undo it
+        #[arg(long)]
+        remove: bool,
+    },
     /// Read every member and check it; with --epub, also compare with the EPUB it was made from
     Verify {
         file: PathBuf,
@@ -108,6 +120,10 @@ pub fn run() -> ExitCode {
     }));
     // started by a double click or with files dropped on it: convert them, no command needed
     let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    // a double click on an .ebk file: read it
+    if open::wanted(&args) {
+        return open::run(&args.iter().map(PathBuf::from).collect::<Vec<_>>());
+    }
     if batch::wanted(&args) {
         return batch::run(&args);
     }
@@ -123,6 +139,8 @@ pub fn run() -> ExitCode {
             let output = output.unwrap_or_else(|| file.with_extension("epub"));
             to_epub(&file, &output, store, max_output, max_member).map(|files| println!("{}: {files} files", output.display()))
         }
+        Command::Open { files } => return open::run(&files),
+        Command::Associate { remove } => open::associate(remove).map(|text| println!("{text}")),
         Command::Info { file, members } => info(&file, members),
         Command::Extract { file, dir, max_output, max_member } => extract(&file, &dir, max_output, max_member),
         Command::Verify { file, epub, max_output, max_member } => verify(&file, epub.as_deref(), max_output, max_member),

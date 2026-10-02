@@ -6,6 +6,9 @@ standard library is needed): the program is put into a folder with EPUB files an
 started again, given files and folders as if they were dropped on it, and the results are checked - with file
 names in Chinese and with spaces, with one file that is not a book, and never changing an EPUB. On Windows it
 is also started in a console window of its own, where it has to wait for the Enter key before the window goes.
+Reading: an .ebk file given to the program (a double click on it) is handed, as an EPUB file in a cache, to the
+reading program - here one that writes down what it got; on Windows also by its file type, as Explorer does, after
+the program took the type; on Linux `associate` writes its desktop entry (into a folder of the test).
 """
 import hashlib, os, shutil, subprocess, sys, time, zipfile
 
@@ -119,6 +122,67 @@ def main():
     with zipfile.ZipFile(os.path.join(folder, "pictures.EPUB")) as z:
         same = code == 0 and all(open(os.path.join(out_dir, *n.split("/")), "rb").read() == z.read(n) for n in z.namelist())
     check("extract: the files of the book, each as in the EPUB", same, out)
+
+    # --- reading: the book goes to the reading program as an EPUB file in a cache
+    cache, record = os.path.join(work, "cache"), os.path.join(work, "opened.txt")
+    recorder = os.path.join(work, "record.py")
+    open(recorder, "w", encoding="utf-8").write(f"#!{sys.executable}\nimport sys\nopen({record!r}, 'a', encoding='utf-8').write(sys.argv[1] + '\\n')\n")
+    if os.name == "nt":
+        opener = os.path.join(work, "record.cmd")
+        open(opener, "w").write(f'@"{sys.executable}" "{recorder}" %*\n')
+    else:
+        opener = recorder
+        os.chmod(recorder, 0o755)
+    reading = dict(english, EBK_OPENER=opener, EBK_CACHE_DIR=cache)
+
+    def opened():
+        return open(record, encoding="utf-8").read().splitlines() if os.path.exists(record) else []
+
+    book = ebk_of("六韬 上卷.epub")
+    code, out = run(book, env=reading)
+    got = opened()
+    check("reading: an .ebk file given to the program goes to the reading program as an EPUB file in the cache",
+          code == 0 and len(got) == 1 and got[0].startswith(cache) and got[0].endswith("六韬 上卷.epub") and os.path.isfile(got[0]), (code, out, got))
+    if got:
+        code, out = run("verify", book, "--epub", got[0])
+        check("reading: that EPUB file has the files of the book", code == 0, out)
+        written = os.path.getmtime(got[0])
+        time.sleep(1.1)
+        code, out = run("open", book, env=reading)
+        check("reading: opened again, the same file, not written again", code == 0 and opened() == [got[0]] * 2 and os.path.getmtime(got[0]) == written, (out, opened()))
+    damaged = os.path.join(work, "damaged.ebk")
+    open(damaged, "wb").write(open(book, "rb").read()[:-100])
+    code, out = run(damaged, env=reading)
+    check("reading: a damaged .ebk file gives a message and goes nowhere", code == 1 and "Cannot open damaged.ebk" in out and len(opened()) == 2, (code, out))
+
+    if sys.platform.startswith("linux"):
+        data = os.path.join(work, "xdg-data")
+        xdg = dict(english, XDG_DATA_HOME=data, XDG_CONFIG_HOME=os.path.join(work, "xdg-config"))
+        desktop = os.path.join(data, "applications", "ebk.desktop")
+        code, out = run("associate", env=xdg)
+        entry = open(desktop, encoding="utf-8").read() if os.path.exists(desktop) else ""
+        check("Linux: associate writes a desktop entry that opens .ebk files with this program",
+              code == 0 and f'Exec="{exe}" open %F' in entry and "MimeType=application/x-ebk;" in entry and os.path.isfile(os.path.join(data, "mime", "packages", "ebk.xml")), (out, entry))
+        code, out = run("associate", "--remove", env=xdg)
+        check("Linux: associate --remove takes it away", code == 0 and not os.path.exists(desktop), out)
+    if sys.platform == "darwin":
+        code, out = run("associate")
+        check("macOS: associate points to EBK.app", code == 1 and "EBK.app" in out, out)
+    if os.name == "nt":
+        import winreg
+        command = lambda: winreg.QueryValue(winreg.HKEY_CURRENT_USER, r"Software\Classes\EBK.Book\shell\open\command")
+        check("Windows: started without a command, the program took the .ebk file type", command().lower() == f'"{exe}" "%1"'.lower(), command())
+        subprocess.run(["cmd", "/c", "start", "", book], env=reading, timeout=60)
+        deadline = time.time() + 120
+        while time.time() < deadline and len(opened()) < 3:
+            time.sleep(0.5)
+        check("Windows: an .ebk file opened by its type, as by a double click, reaches the reading program", opened()[2:] == opened()[:1], opened())
+        code, out = run("associate", "--remove")
+        try:
+            gone = not command()
+        except OSError:
+            gone = True
+        check("Windows: associate --remove gives the file type back", code == 0 and gone, out)
 
     # --- Windows: in a console window made for it, the program waits for Enter; without one it does not
     if os.name == "nt":

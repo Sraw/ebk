@@ -1,5 +1,7 @@
 # Builds the packages on Linux as tools/dist.sh does, then runs the converter that is in them on Windows and
 # macOS, where it cannot be run at home, the way a user does (tools/smoke_test.py), and the Rust tests there.
+# On a Mac it also builds EBK.app (which needs osacompile and codesign), tries it (tools/macos_app_test.py) and
+# makes the macOS package with it: the artifact "ebk-macos".
 name: platforms
 on:
   push:
@@ -79,3 +81,32 @@ jobs:
         run: |
           command -v cargo > /dev/null || { curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; export PATH="$HOME/.cargo/bin:$PATH"; }
           cargo test --release
+
+  macos-app:
+    needs: packages
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: packages
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: EBK.app
+        run: |
+          cd packages && unzip -q ebk-macos.zip && cd ..
+          tools/dist/macos/build-app.sh packages/ebk-macos/ebk packages/ebk-macos
+      - name: EBK.app, as a user uses it
+        run: python tools/macos_app_test.py packages/ebk-macos/EBK.app "$RUNNER_TEMP/app"
+      - name: The macOS package with EBK.app
+        run: |
+          cd packages && rm ebk-macos.zip
+          ditto -c -k --keepParent ebk-macos ebk-macos.zip
+          unzip -l ebk-macos.zip | tail -n 12
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ebk-macos
+          path: packages/ebk-macos.zip
+          retention-days: 14

@@ -10,7 +10,7 @@ use std::process::ExitCode;
 
 use ebk::Options;
 
-const COMMANDS: &[&str] = &["convert", "info", "extract", "verify", "epub", "help"];
+const COMMANDS: &[&str] = &["convert", "info", "extract", "verify", "epub", "open", "associate", "help"];
 const LOG_NAME: &str = "ebk-convert.log";
 
 /// No arguments, or nothing but existing files and folders (and no name of a command in front).
@@ -30,6 +30,10 @@ pub fn run(args: &[OsString]) -> ExitCode {
     let log = || File::options().append(true).create(true).open(folder.join(LOG_NAME)).ok();
     let mut out = Report { log: (!std::io::stdout().is_terminal()).then(log).flatten() };
     out.line(&format!("EBK {}", env!("CARGO_PKG_VERSION")));
+    #[cfg(windows)]
+    if let Some(text) = crate::open::associate_if_needed() {
+        out.line(&text);
+    }
     others.sort();
     for other in &others {
         out.line(&format!("{}: {}", other.display(), say("不是 .epub 文件，跳过", "not an .epub file, skipped")));
@@ -141,7 +145,7 @@ fn size(bytes: u64) -> String {
 }
 
 /// Whether to speak Chinese: the language of the user interface on Windows, of the locale elsewhere.
-fn chinese() -> bool {
+pub(crate) fn chinese() -> bool {
     #[cfg(windows)]
     {
         extern "system" {
@@ -158,7 +162,7 @@ fn chinese() -> bool {
 
 /// On Windows a double click opens a console window that closes when the program ends: wait for a key then.
 /// Elsewhere, and in a console that was there before, there is nothing to wait for.
-fn wait(prompt: &str) {
+pub(crate) fn wait(prompt: &str) {
     #[cfg(windows)]
     {
         extern "system" {
