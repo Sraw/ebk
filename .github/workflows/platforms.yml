@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Tools for building for the other systems
         run: |
           rustup update stable && rustup default stable
@@ -19,6 +22,7 @@ jobs:
       - name: Tests
         run: |
           cargo test --release
+          cargo build --release
           python tools/ebk_vectors.py target/release/ebk "$RUNNER_TEMP/vectors" > vectors.log 2>&1 || { grep -E "^FAIL|Traceback" -A5 vectors.log; exit 1; }
           tail -1 vectors.log
       - name: Packages
@@ -64,6 +68,7 @@ jobs:
         if: runner.os == 'macOS'
         continue-on-error: true
         run: |
+          set +e
           cd packages/${{ matrix.package }}
           file ebk; lipo -archs ebk
           codesign -dv --verbose=2 ebk 2>&1 || true
@@ -71,4 +76,6 @@ jobs:
           xattr -w com.apple.quarantine "0081;$(printf %x "$(date +%s)");Safari;" ebk
           ./ebk --version; echo "started with the mark of a download: exit $?"
       - name: The Rust tests, built here
-        run: cargo test --release
+        run: |
+          command -v cargo > /dev/null || { curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; export PATH="$HOME/.cargo/bin:$PATH"; }
+          cargo test --release

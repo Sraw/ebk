@@ -37,7 +37,9 @@ a name of its own.
 
 怎么读 .ebk / Reading .ebk books
 --------------------------------
-用装了 EBK 插件（ebk.koplugin）的 KOReader，支持 Kobo、Kindle、Android 和电脑。
+用装了 EBK 插件（ebk.koplugin）的 KOReader：Kobo、Kindle、Android 和电脑。
+（插件在电脑和 Android 上试过；Kobo、Kindle 上还没有在真机上试过。）
 With KOReader and the EBK plug-in (ebk.koplugin): Kobo, Kindle, Android and desktop computers.
+(The plug-in has been tried on a computer and on Android; not yet on a real Kobo or Kindle.)
 
 其他命令 / Other commands:    ebk help

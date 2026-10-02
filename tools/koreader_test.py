@@ -154,9 +154,10 @@ def main():
     open(os.path.join(books, "damaged.ebk"), "wb").write(open(book_ebk, "rb").read()[:-40])
 
     run("first-run")  # the first run shows the guide for new users,
-    fresh = run("fresh-empty", books, EBK_TEST_EMPTY_CACHE=1)
-    check("before any EBK book was opened: \"Empty the cache\" does nothing, and nothing breaks", fresh.get("emptied") == ["yes"] and not fresh["crashed"], str(fresh))
-    shutil.rmtree(cache, ignore_errors=True)  # the file browser had begun to prepare the books of the folder
+    no_books = os.path.join(work, "no-books")  # a folder without EBK books: the file browser prepares none
+    os.makedirs(no_books)
+    fresh = run("fresh-empty", no_books, EBK_TEST_EMPTY_CACHE=1)
+    check("before any EBK book was opened: \"Empty the cache\" does nothing, and nothing breaks", fresh.get("emptied") == ["yes"] and not fresh["crashed"] and not os.path.exists(cache), str(fresh))
     run("warm-up", epub)  # and the first book a notice about colour
     for name, source, converted, pages in (("book", epub, book_ebk, (30, 12)), ("pictures", ill_epub, ill_ebk, (*PICTURE_PAGES, 5))):
         goto = ",".join(map(str, pages))
@@ -182,6 +183,12 @@ def main():
     for name, options in (("start-with-last", ()), ("start-with-last-and-an-option", ("-d",))):
         last = run(name, *options)
         check(f"KOReader starts with the last book, an EBK book ({' '.join(options) or 'no options'})", last.get("file") == [book_ebk] and last.get("page") == ["12"] and "message" not in last, str(last))
+    # started on another book, named as desktop systems name it; the last book must not come up instead
+    from urllib.parse import quote
+    named = run("named-by-address", "file://" + quote(ill_ebk))
+    check("started with a book named by a file:// address, it opens that book", named.get("file") == [ill_ebk] and "message" not in named, str(named))
+    back = run("back-to-last", book_ebk)
+    check("(and the first book again, for the cases that follow)", back.get("file") == [book_ebk], str(back.get("file")))
     run("unset-last", book_ebk, EBK_TEST_SET_start_with="filemanager")
 
     browser = run("browser", books)

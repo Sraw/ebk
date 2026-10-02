@@ -24,7 +24,9 @@ CARGO_TARGET_ARM_UNKNOWN_LINUX_MUSLEABI_LINKER=rust-lld CARGO_TARGET_ARM_UNKNOWN
     build build --quiet --release -p ebk-cli --target arm-unknown-linux-musleabi
 
 # the Android NDK: the one named in the environment, or the newest in the Android SDK, or one in tools/ndk
-ndk=$(ls -d ${ANDROID_NDK_HOME:+"$ANDROID_NDK_HOME"} ${ANDROID_HOME:+"$ANDROID_HOME"/ndk/*} "$here"/tools/ndk/android-ndk-* 2>/dev/null | head -1)
+ndk=${ANDROID_NDK_HOME:-}
+[ -d "$ndk" ] || ndk=$(ls -d ${ANDROID_HOME:+"$ANDROID_HOME"/ndk/*} 2>/dev/null | sort -V | tail -1)
+[ -d "$ndk" ] || ndk=$(ls -d "$here"/tools/ndk/android-ndk-* 2>/dev/null | sort -V | tail -1)
 ndk=${ndk:+$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin}
 if [ -n "$ndk" ]; then
     # API level 21 is Android 5; pages of 16 KiB are what newer devices have

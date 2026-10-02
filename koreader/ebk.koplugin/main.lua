@@ -117,9 +117,12 @@ local function export(ebk, epub)
 end
 
 --- Removes what a run that was stopped left behind, and the books opened longest ago until the cache, with
---- `room` more bytes, keeps to its limit. `keep` is not removed.
+--- `room` more bytes, keeps to its limit. `keep` and the book that is open are not removed.
 local function tidyCache(room, keep)
     local files, total = {}, room
+    -- the book that is open is not removed either (this may be KOReader's second process, which has the same)
+    local reader = package.loaded["apps/reader/readerui"]
+    local reading = reader and reader.instance and reader.instance.document and reader.instance.document.ebk_epub
     for name in lfs.dir(cache_dir) do
         local path = cache_dir .. "/" .. name
         local attr = lfs.attributes(path)
@@ -139,7 +142,7 @@ local function tidyCache(room, keep)
         if total <= CACHE_BYTES then
             break
         end
-        if file.path ~= keep then
+        if file.path ~= keep and file.path ~= reading then
             os.remove(file.path)
             total = total - file.size
         end
@@ -163,7 +166,7 @@ local function epubFor(file)
     -- KOReader also opens books in a second process, to read titles and covers for the file browser: if that
     -- one was writing the same book, the file is there now although this attempt was refused
     -- make room first, for about what the book will take: a full device would refuse it
-    tidyCache(math.min(attr.size * 2, CACHE_BYTES))
+    tidyCache(math.min(attr.size * 2, CACHE_BYTES), epub)
     local ok, reason = export(file, epub)
     if not ok and lfs.attributes(epub, "mode") ~= "file" then
         return nil, reason
@@ -217,14 +220,22 @@ end
 --- The EBK book KOReader was started with, if any: named on the command line, or the last one opened when
 --- KOReader is set to start with that.
 local function bookAtStart()
-    local named -- a file or folder on the command line, where there is one: KOReader opens that
+    -- what KOReader was started with, read as its reader.lua reads it: the first argument that is not one of
+    -- its options, which may be a file:// address
+    local options = { ["-d"] = true, ["-v"] = true, ["-p"] = true, ["--debug"] = true, ["--verbose"] = true, ["--profile"] = true }
     for _, a in ipairs(type(arg) == "table" and arg or {}) do
-        if lfs.attributes(a, "mode") then
-            named = a
+        if a == "--" then
+            break
+        elseif not options[a] then
+            if a:sub(1, 7) == "file://" then
+                a = a:gsub("%%(%x%x)", function(x) return string.char(tonumber(x, 16)) end):sub(8)
+            end
+            local mode = lfs.attributes(a, "mode")
+            if mode then
+                return mode == "file" and isBook(a) and a or nil -- KOReader opens that file or folder
+            end
+            break
         end
-    end
-    if named then
-        return isBook(named) and named or nil
     end
     local last = G_reader_settings:readSetting("lastfile")
     if G_reader_settings:readSetting("start_with") == "last" and isBook(last) then
