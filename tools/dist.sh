@@ -25,7 +25,7 @@ CARGO_TARGET_ARM_UNKNOWN_LINUX_MUSLEABI_LINKER=rust-lld CARGO_TARGET_ARM_UNKNOWN
 
 # the Android NDK: the one named in the environment, or the newest in the Android SDK, or one in tools/ndk
 ndk=${ANDROID_NDK_HOME:-}
-[ -d "$ndk" ] || ndk=$(ls -d ${ANDROID_HOME:+"$ANDROID_HOME"/ndk/*} 2>/dev/null | sort -V | tail -1)
+[ -d "$ndk" ] || [ -z "${ANDROID_HOME:-}" ] || ndk=$(ls -d "$ANDROID_HOME"/ndk/* 2>/dev/null | sort -V | tail -1)
 [ -d "$ndk" ] || ndk=$(ls -d "$here"/tools/ndk/android-ndk-* 2>/dev/null | sort -V | tail -1)
 ndk=${ndk:+$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin}
 if [ -n "$ndk" ]; then

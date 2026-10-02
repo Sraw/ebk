@@ -79,8 +79,9 @@ python tools/smoke_test.py dist/ebk-linux/ebk /tmp/smoke crates/ebk/tests/data  
 in `tools/zig` and `cargo-zigbuild` in `tools/cargo-tools` (`cargo install --root tools/cargo-tools cargo-zigbuild`)
 as the linker, and for the Android libraries of the plug-in the Android NDK (`ANDROID_NDK_HOME`, or the one in the
 Android SDK at `ANDROID_HOME`). The programs for Windows
-and macOS have not been run here: `.github/workflows/platforms.yml` runs them on GitHub's machines (`smoke_test.py`
-and the Rust tests). The programs for ARM Linux (e-readers) were run under `qemu-user`, not on a device. The plug-in
+and macOS cannot be run here: `.github/workflows/platforms.yml` runs them on GitHub's machines (`smoke_test.py` and
+the Rust tests; passed on Windows x86-64 and ARM, macOS on Apple silicon and Intel). A double click with the mouse
+and the dialog macOS shows for a program that is not signed have not been seen. The programs for ARM Linux (e-readers) were run under `qemu-user`, not on a device. The plug-in
 was run in the desktop KOReader for Linux and, with the library, in KOReader on an Android virtual device
 (`tools/koreader-android/`), both v2026.07.1; not on an e-reader or a phone.
 

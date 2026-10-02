@@ -185,8 +185,10 @@ def main():
         check(f"KOReader starts with the last book, an EBK book ({' '.join(options) or 'no options'})", last.get("file") == [book_ebk] and last.get("page") == ["12"] and "message" not in last, str(last))
     # started on another book, named as desktop systems name it; the last book must not come up instead
     from urllib.parse import quote
-    named = run("named-by-address", "file://" + quote(ill_ebk))
-    check("started with a book named by a file:// address, it opens that book", named.get("file") == [ill_ebk] and "message" not in named, str(named))
+    other = os.path.join(books, "另一本 书 100%.ebk")  # a name that such an address has to escape
+    shutil.copy(ill_ebk, other)
+    named = run("named-by-address", "file://" + quote(other))
+    check("started with a book named by a file:// address, it opens that book", named.get("file") == [other] and "message" not in named, str(named))
     back = run("back-to-last", book_ebk)
     check("(and the first book again, for the cases that follow)", back.get("file") == [book_ebk], str(back.get("file")))
     run("unset-last", book_ebk, EBK_TEST_SET_start_with="filemanager")
@@ -194,6 +196,7 @@ def main():
     browser = run("browser", books)
     check("the file browser lists .ebk files", {"book.ebk", "pictures.ebk"} <= set(browser.get("listed", [])), str(browser.get("listed")))
 
+    cached = sorted(os.listdir(cache))
     damaged = run("damaged", os.path.join(books, "damaged.ebk"))
     check("a damaged file gives a message, not a crash", damaged.get("file") == ["none"] and not damaged["crashed"] and any("EBK" in m for m in damaged.get("message", [])), str(damaged.get("message")))
     check("a damaged file leaves nothing in the cache", sorted(os.listdir(cache)) == cached, str(os.listdir(cache)))
