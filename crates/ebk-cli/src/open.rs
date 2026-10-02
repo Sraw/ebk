@@ -338,8 +338,11 @@ mod windows {
     }
 
     /// The program the user chose for .ebk files in Windows ("Open with", "Always"), as a ProgID.
+    /// Newer Windows 11 keeps it under UserChoiceLatest as well.
     pub fn user_choice() -> Option<String> {
-        get(HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.ebk\UserChoice", Some("ProgId"))
+        ["UserChoiceLatest", "UserChoice"].iter().find_map(|key| {
+            get(HKEY_CURRENT_USER, &format!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.ebk\{key}"), Some("ProgId"))
+        })
     }
 
     /// The ProgID .ebk files have, for this user or for the computer.
@@ -363,13 +366,13 @@ mod windows {
 
     /// The ProgID and its open command; the type .ebk gets it when no other program has it.
     pub fn register(exe: &Path) -> Result<()> {
+        if let Some(id) = owner().filter(|id| id != PROG_ID) {
+            bail!(".ebk files belong to another program ({id}); choose this one with \"Open with\" in Explorer");
+        }
         let name = if super::chinese() { "EBK 电子书" } else { "EBK book" };
         set(&format!(r"Software\Classes\{PROG_ID}"), None, name)?;
         set(&format!(r"Software\Classes\{PROG_ID}\shell\open\command"), None, &command(exe))?;
-        match owner() {
-            Some(id) if id != PROG_ID => bail!(".ebk files belong to another program ({id}); choose this one with \"Open with\" in Explorer"),
-            _ => set(r"Software\Classes\.ebk", None, PROG_ID)?,
-        }
+        set(r"Software\Classes\.ebk", None, PROG_ID)?;
         changed();
         Ok(())
     }
