@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/ebk", "crates/ebk-cli", "crates/ebk-wasm"]
+members = ["crates/ebk", "crates/ebk-cli", "crates/ebk-ffi", "crates/ebk-wasm"]
 exclude = ["phase0", "phase3", "third_party", "fuzz", "tools"]
 
 [workspace.package]

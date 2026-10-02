@@ -1,0 +1,14 @@
+[package]
+name = "ebk-ffi"
+description = "The EBK tools as a shared library with a C interface, for programs that cannot start another program"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "ebkffi"
+crate-type = ["cdylib"]
+
+[dependencies]
+ebk-cli = { path = "../ebk-cli" }
+ebk-core = { package = "ebk", path = "../ebk" }

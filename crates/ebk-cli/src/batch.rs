@@ -28,6 +28,10 @@ pub fn run(args: &[OsString]) -> ExitCode {
     // without a terminal (a double click in a file manager on Linux) the lines go to a file in the folder as well
     let mut out = Report { log: (!std::io::stdout().is_terminal()).then(|| File::create(folder.join(LOG_NAME)).ok()).flatten() };
     out.line(&format!("EBK {}", env!("CARGO_PKG_VERSION")));
+    others.sort();
+    for other in &others {
+        out.line(&format!("{}: {}", other.display(), say("不是 .epub 文件，跳过", "not an .epub file, skipped")));
+    }
     if inputs.is_empty() {
         out.line(&say(
             &format!("在 {} 里没有找到 .epub 文件。\n把这个程序放进有 EPUB 的文件夹再运行，或者把 EPUB 文件（或文件夹）拖到它上面。\n命令行用法见 ebk help。", folder.display()),
@@ -59,10 +63,6 @@ pub fn run(args: &[OsString]) -> ExitCode {
                 failed.push(name);
             }
         }
-    }
-    others.sort();
-    for other in &others {
-        out.line(&format!("{}: {}", other.display(), say("不是 .epub 文件，跳过", "not an .epub file, skipped")));
     }
 
     out.line("");

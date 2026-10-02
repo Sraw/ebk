@@ -32,3 +32,6 @@ __pycache__/
 /tools/cargo-tools/
 /dist/
 /tools/qemu/
+/tools/koreader/
+/tools/ndk/
+/.omc/project-memory.json

@@ -18,8 +18,11 @@ You can also drop EPUB files or a folder on the program. Books converted earlier
 -------------------------
 Windows: 如果出现"Windows 已保护你的电脑"，点"更多信息"→"仍要运行"。
          If "Windows protected your PC" appears, choose "More info", then "Run anyway".
-macOS:   右键点程序，选"打开"，再点"打开"。只需要做一次。
-         Right-click the program, choose "Open", then "Open" again. Only needed once.
+macOS:   第一次双击会被系统拦下。打开"系统设置 → 隐私与安全性"，在下面点"仍要打开"。
+         （较旧的 macOS：右键点程序，选"打开"，再点"打开"。）只需要做一次。
+         The first double click is stopped by the system. Open System Settings → Privacy & Security and
+         choose "Open Anyway" further down. (Older macOS: right-click the program, choose "Open", then
+         "Open" again.) Only needed once.
 Linux:   如果双击没有反应，在文件夹里打开终端运行 ./ebk ；结果也会写进 ebk-convert.log。
          If a double click does nothing, open a terminal in the folder and run ./ebk ; the result is also
          written to ebk-convert.log.
@@ -28,5 +31,10 @@ Linux:   如果双击没有反应，在文件夹里打开终端运行 ./ebk ；�
 ----------------------------------------
 在终端里运行 / In a terminal:    ebk epub 书.ebk -o 书.epub
 得到的 EPUB 里每个文件都与原书相同。 Every file inside is the same as in the original book.
+
+怎么读 .ebk / Reading .ebk books
+--------------------------------
+用装了 EBK 插件（ebk.koplugin）的 KOReader，支持 Kobo、Kindle、Android 和电脑。
+With KOReader and the EBK plug-in (ebk.koplugin): Kobo, Kindle, Android and desktop computers.
 
 其他命令 / Other commands:    ebk help

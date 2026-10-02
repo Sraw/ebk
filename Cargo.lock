@@ -232,6 +232,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ebk-ffi"
+version = "0.1.0"
+dependencies = [
+ "ebk",
+ "ebk-cli",
+]
+
+[[package]]
 name = "ebk-wasm"
 version = "0.1.0"
 dependencies = [
