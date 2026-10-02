@@ -1,0 +1,25 @@
+# Coverage-guided fuzzing with libFuzzer on the stable toolchain (no sanitizer: the code under test is safe Rust,
+# what is looked for are panics, arithmetic overflow, runaway memory and time). See run.sh. Not part of the workspace.
+[package]
+name = "ebk-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1"
+brotli = "9.0.0"
+crc32fast = "1.5.2"
+ebk = { path = "../crates/ebk" }
+flate2 = "1.1.10"
+lepton_jpeg = { path = "../third_party/lepton_jpeg" }
+libfuzzer-sys = "0.4"
+roxmltree = "0.21.1"
+
+[profile.release]
+opt-level = 3
+debug-assertions = true
+overflow-checks = true
+debug = 1
+
+[workspace]

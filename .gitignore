@@ -1,0 +1,30 @@
+# build output
+/target/
+/build/
+/reader/ebk.wasm
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/artifacts/
+/tools/*/target/
+/phase0/*/target/
+/phase3/*/target/
+# downloaded for tests
+/.venv/
+/tools/browser/node_modules/
+/tools/browser/browsers/
+/phase0/foliate-check/node_modules/
+# test books: fetched by scripts, not part of the repository
+/corpus/
+/corpus-ext/
+/corpus-lang/
+/corpus-txt/
+/tools/jxl/
+/corpus-txt.log
+# samples and outputs of the early experiments
+/phase0/jxl-bench/data/
+/phase0/wasm-bench/data/
+/phase0/dicts/
+# tool state
+__pycache__/
+/.omc/state/
+/.omc/autoresearch/*/pg_catalog.csv

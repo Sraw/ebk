@@ -1,0 +1,18 @@
+# `unlepton` decodes Lepton files with lepton_jpeg as published on crates.io - not the fork in third_party/ that the
+# ebk crate uses - so that tools/ebk_check.py can check storage mode 4 without any code of the ebk crate.
+# `compare` runs the fork and the published crate side by side (tools/lepton_compare.py). Not part of the workspace.
+[package]
+name = "unlepton"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+lepton_jpeg = "=0.5.8"
+# for src/bin/compare.rs: the fork of this repository next to the published crate
+fork = { package = "lepton_jpeg", path = "../../third_party/lepton_jpeg" }
+
+[profile.release]
+opt-level = 3
+
+[workspace]
