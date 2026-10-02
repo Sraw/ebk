@@ -72,13 +72,17 @@ fuzz/run.sh raw 600                                                      # also:
 python tools/lepton_compare.py corpus/                                   # after a change to the codec: same coded stream as the published crate
 python tools/koreader_test.py <KOReader> dist/ebk.koplugin target/release/ebk /tmp/ko book.epub pictures.epub target/release/libebkffi.so
                                                                          # the plug-in in the desktop KOReader, without a display
+python tools/smoke_test.py dist/ebk-linux/ebk /tmp/smoke crates/ebk/tests/data   # the packaged program as a user uses it; any system
 ```
 
 `tools/dist.sh` builds for the other systems from Linux: it needs the Rust targets it names (`rustup target add`), zig
 in `tools/zig` and `cargo-zigbuild` in `tools/cargo-tools` (`cargo install --root tools/cargo-tools cargo-zigbuild`)
-as the linker, and for the Android libraries of the plug-in the Android NDK in `tools/ndk`. The programs for Windows
-and macOS and the Android libraries have not been run: there is no such system here. The programs for ARM Linux
-(e-readers) were run under `qemu-user`; the plug-in was run in the desktop KOReader for Linux (v2026.07.1) only.
+as the linker, and for the Android libraries of the plug-in the Android NDK (`ANDROID_NDK_HOME`, or the one in the
+Android SDK at `ANDROID_HOME`). The programs for Windows
+and macOS have not been run here: `.github/workflows/platforms.yml` runs them on GitHub's machines (`smoke_test.py`
+and the Rust tests). The programs for ARM Linux (e-readers) were run under `qemu-user`, not on a device. The plug-in
+was run in the desktop KOReader for Linux and, with the library, in KOReader on an Android virtual device
+(`tools/koreader-android/`), both v2026.07.1; not on an e-reader or a phone.
 
 The Python tools need `brotli`; the browser tests need Playwright (`tools/browser/package.json`). `ebk_check.py` also
 needs `tools/lepton-check` built (`cargo build --release` there: it decodes JPEG members with the published codec, not

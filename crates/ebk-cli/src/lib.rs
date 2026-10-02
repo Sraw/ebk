@@ -121,7 +121,7 @@ pub fn run() -> ExitCode {
         }
         Command::Epub { file, output, store, max_output, max_member } => {
             let output = output.unwrap_or_else(|| file.with_extension("epub"));
-            to_epub(&file, &output, store, max_output, max_member).map(|members| println!("{}: {members} members", output.display()))
+            to_epub(&file, &output, store, max_output, max_member).map(|files| println!("{}: {files} files", output.display()))
         }
         Command::Info { file, members } => info(&file, members),
         Command::Extract { file, dir, max_output, max_member } => extract(&file, &dir, max_output, max_member),
@@ -237,16 +237,33 @@ fn convert(input: &Path, output: Option<PathBuf>, mut opts: Options, threads: Op
 
 /// Writes `data` under a temporary name next to `path` and renames it, so that `path` is never half written.
 fn write_new(path: &Path, data: &[u8]) -> Result<()> {
-    // a short name of its own: derived from the output's name it could be too long for the file system
-    let temp = path.with_file_name(format!(".ebk-{}.tmp", std::process::id()));
     let cannot = || format!("cannot write {}", path.display());
-    let mut file = File::options().write(true).create_new(true).open(&temp).with_context(|| format!("cannot create {}", temp.display()))?;
+    let (temp, mut file) = temporary_next_to(path)?;
     // from here on the temporary file is ours to remove
     let written = file.write_all(data).and_then(|()| file.sync_all()).and_then(|()| std::fs::rename(&temp, path));
     if written.is_err() {
         let _ = std::fs::remove_file(&temp);
     }
     written.with_context(cannot)
+}
+
+/// A new file next to `path`, to be renamed to it. A short name of its own: derived from the output's name it
+/// could be too long for the file system. A file of that name left by a run that was stopped is passed over.
+fn temporary_next_to(path: &Path) -> Result<(PathBuf, File)> {
+    let mut n = 0;
+    loop {
+        let temp = path.with_file_name(format!(".ebk-{}-{n}.tmp", std::process::id()));
+        match File::options().write(true).create_new(true).open(&temp) {
+            Ok(file) => return Ok((temp, file)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && n < 100 => n += 1,
+            Err(e) => return Err(e).with_context(|| format!("cannot create {}", temp.display())),
+        }
+    }
+}
+
+/// Whether there is anything under this name, a link that leads nowhere included.
+fn taken(path: &Path) -> bool {
+    path.symlink_metadata().is_ok()
 }
 
 fn open(file: &Path) -> Result<Reader<FileSource>> {
@@ -354,15 +371,19 @@ fn extract(file: &Path, dir: &Path, max_output: u64, max_member: u64) -> Result<
 }
 
 /// The members as an EPUB file: `mimetype` first and not compressed, as EPUB asks, then the rest in member order.
-/// Gives the number of members. `output` must not exist.
+/// Gives the number of files written. `output` must not exist.
 pub fn to_epub(file: &Path, output: &Path, store: bool, max_output: u64, max_member: u64) -> Result<usize> {
     // never replaced: next to the EBK file there may be the EPUB it was made from
-    if output.exists() {
+    if taken(output) {
         bail!("{} exists already; name another file with -o", output.display());
     }
     let mut reader = open(file)?;
     reader.set_member_limit(max_member);
-    let Some(mimetype) = reader.find("mimetype") else { bail!("{} has no member \"mimetype\": it was not made from an EPUB", file.display()) };
+    // EPUB files without the file `mimetype` exist, and are converted: the EPUB written here gets one
+    let mimetype = reader.find("mimetype");
+    if mimetype.is_none() && reader.find("META-INF/container.xml").is_none() {
+        bail!("{} has neither \"mimetype\" nor \"META-INF/container.xml\": it was not made from an EPUB", file.display());
+    }
     let mut total = 0u64;
     for (i, m) in reader.members().enumerate() {
         let path = m.path.escape_debug();
@@ -379,25 +400,27 @@ pub fn to_epub(file: &Path, output: &Path, store: bool, max_output: u64, max_mem
     }
 
     // under a temporary name, so that the output is never there half written
-    let temp = output.with_file_name(format!(".ebk-{}.tmp", std::process::id()));
-    let out = File::options().write(true).create_new(true).open(&temp).with_context(|| format!("cannot create {}", temp.display()))?;
+    let (temp, out) = temporary_next_to(output)?;
     let written = (|| -> Result<()> {
         let mut zip = zipout::ZipWriter::new(BufWriter::new(out));
-        zip.add("mimetype", &reader.read(mimetype)?, false)?;
+        match mimetype {
+            Some(i) => zip.add("mimetype", &reader.read(i)?, false)?,
+            None => zip.add("mimetype", b"application/epub+zip", false)?,
+        }
         // in member order, so that each text block is decoded once
-        for i in (0..reader.member_count()).filter(|&i| i != mimetype) {
+        for i in (0..reader.member_count()).filter(|&i| Some(i) != mimetype) {
             let path = reader.member(i).unwrap().path.to_owned();
             zip.add(&path, &reader.read(i)?, !store)?;
         }
         let file = zip.finish()?.into_inner().map_err(|e| e.into_error())?;
         file.sync_all()?;
         // not `rename`, which replaces: a file that appeared meanwhile stays
-        std::fs::hard_link(&temp, output).or_else(|_| if output.exists() { Err(std::io::ErrorKind::AlreadyExists.into()) } else { std::fs::rename(&temp, output) })?;
+        std::fs::hard_link(&temp, output).or_else(|_| if taken(output) { Err(std::io::ErrorKind::AlreadyExists.into()) } else { std::fs::rename(&temp, output) })?;
         Ok(())
     })();
     let _ = std::fs::remove_file(&temp);
     written.with_context(|| format!("cannot write {}", output.display()))?;
-    Ok(reader.member_count())
+    Ok(reader.member_count() + usize::from(mimetype.is_none()))
 }
 
 fn verify(file: &Path, epub: Option<&Path>, max_output: u64, max_member: u64) -> Result<()> {
@@ -449,15 +472,15 @@ mod tests {
     fn write_new_leaves_other_files_alone() {
         let dir = std::env::temp_dir().join(format!("ebk-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let (out, temp) = (dir.join("x".repeat(250) + ".ebk"), dir.join(format!(".ebk-{}.tmp", std::process::id())));
-        // a file with the temporary name is someone else's: the write fails and the file stays
+        let (out, temp) = (dir.join("x".repeat(250) + ".ebk"), dir.join(format!(".ebk-{}-0.tmp", std::process::id())));
+        // a file with the temporary name is someone else's (or left by a run that was stopped): it stays as
+        // it is, and the write takes another name
         std::fs::write(&temp, b"theirs").unwrap();
-        assert!(super::write_new(&out, b"new").is_err());
+        super::write_new(&out, b"first").unwrap();
         assert_eq!(std::fs::read(&temp).unwrap(), b"theirs");
-        assert!(!out.exists());
+        assert_eq!(std::fs::read(&out).unwrap(), b"first");
         std::fs::remove_file(&temp).unwrap();
         // an output name close to the longest a file system takes, replacing an older file
-        std::fs::write(&out, b"old").unwrap();
         super::write_new(&out, b"new").unwrap();
         assert_eq!(std::fs::read(&out).unwrap(), b"new");
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);

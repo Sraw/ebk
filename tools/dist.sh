@@ -3,7 +3,7 @@
 # Builds into dist/: the converter for Windows, macOS (both processors in one file) and Linux, and the KOReader
 # plug-in with its helper programs (Linux and macOS, x86-64 and ARM) and libraries (Android).
 # Needs the Rust targets named below, tools/zig (the linker for the other systems), tools/cargo-tools
-# (cargo-zigbuild) and, for Android, tools/ndk; see the README.
+# (cargo-zigbuild) and, for Android, the Android NDK; see the README.
 set -e
 here=$(cd "$(dirname "$0")/.." && pwd)
 cd "$here"
@@ -23,7 +23,9 @@ done
 CARGO_TARGET_ARM_UNKNOWN_LINUX_MUSLEABI_LINKER=rust-lld CARGO_TARGET_ARM_UNKNOWN_LINUX_MUSLEABI_RUSTFLAGS="-C strip=symbols" \
     build build --quiet --release -p ebk-cli --target arm-unknown-linux-musleabi
 
-ndk=$(ls -d "$here"/tools/ndk/android-ndk-*/toolchains/llvm/prebuilt/linux-x86_64/bin 2>/dev/null | tail -1)
+# the Android NDK: the one named in the environment, or the newest in the Android SDK, or one in tools/ndk
+ndk=$(ls -d ${ANDROID_NDK_HOME:+"$ANDROID_NDK_HOME"} ${ANDROID_HOME:+"$ANDROID_HOME"/ndk/*} "$here"/tools/ndk/android-ndk-* 2>/dev/null | head -1)
+ndk=${ndk:+$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin}
 if [ -n "$ndk" ]; then
     # API level 21 is Android 5; pages of 16 KiB are what newer devices have
     export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ndk/aarch64-linux-android21-clang"
@@ -33,7 +35,7 @@ if [ -n "$ndk" ]; then
         build build --quiet --release -p ebk-ffi --target "$target"
     done
 else
-    echo "no tools/ndk: the plug-in is built without the Android libraries" >&2
+    echo "no Android NDK (ANDROID_NDK_HOME, ANDROID_HOME/ndk, tools/ndk): the plug-in is built without the Android libraries" >&2
 fi
 
 rm -rf dist && mkdir -p dist

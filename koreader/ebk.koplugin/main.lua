@@ -57,6 +57,9 @@ local function loadLibrary()
     ]]
     local name = os.getenv("EBK_PLUGIN_LIBRARY") or ("libebkffi-" .. (jit.arch == "arm64" and "aarch64" or jit.arch == "arm" and "armv7" or jit.arch) .. ".so")
     local path = name:sub(1, 1) == "/" and name or (plugin_dir .. "/lib/" .. name)
+    if lfs.attributes(path, "mode") ~= "file" then
+        error(say("这个插件里没有适合这台设备处理器的库", "the plug-in has no library for this device's processor") .. " (" .. name .. ")", 0)
+    end
     if Device:isAndroid() then
         -- Android loads code only from the application's own directory, not from shared storage, where
         -- plug-ins are: keep a copy there (the current directory is the application's).
@@ -113,8 +116,10 @@ local function export(ebk, epub)
     return nil, reason
 end
 
-local function removeOldest(keep)
-    local files, total = {}, 0
+--- Removes what a run that was stopped left behind, and the books opened longest ago until the cache, with
+--- `room` more bytes, keeps to its limit. `keep` is not removed.
+local function tidyCache(room, keep)
+    local files, total = {}, room
     for name in lfs.dir(cache_dir) do
         local path = cache_dir .. "/" .. name
         local attr = lfs.attributes(path)
@@ -122,8 +127,10 @@ local function removeOldest(keep)
             if name:match("%.epub$") then
                 table.insert(files, { path = path, size = attr.size, time = attr.modification })
                 total = total + attr.size
-            elseif os.time() - attr.modification > 3600 then
-                os.remove(path) -- left by a run that was stopped
+            elseif os.time() - attr.modification > 600 then
+                os.remove(path) -- a file being written, of a run that did not finish
+            else
+                total = total + attr.size
             end
         end
     end
@@ -155,11 +162,13 @@ local function epubFor(file)
     end
     -- KOReader also opens books in a second process, to read titles and covers for the file browser: if that
     -- one was writing the same book, the file is there now although this attempt was refused
+    -- make room first, for about what the book will take: a full device would refuse it
+    tidyCache(math.min(attr.size * 2, CACHE_BYTES))
     local ok, reason = export(file, epub)
     if not ok and lfs.attributes(epub, "mode") ~= "file" then
         return nil, reason
     end
-    removeOldest(epub)
+    tidyCache(0, epub)
     return epub
 end
 
@@ -208,12 +217,17 @@ end
 --- The EBK book KOReader was started with, if any: named on the command line, or the last one opened when
 --- KOReader is set to start with that.
 local function bookAtStart()
-    local args = type(arg) == "table" and arg or {} -- the command line, where there is one
-    if isBook(args[#args]) then
-        return args[#args]
+    local named -- a file or folder on the command line, where there is one: KOReader opens that
+    for _, a in ipairs(type(arg) == "table" and arg or {}) do
+        if lfs.attributes(a, "mode") then
+            named = a
+        end
+    end
+    if named then
+        return isBook(named) and named or nil
     end
     local last = G_reader_settings:readSetting("lastfile")
-    if #args == 0 and G_reader_settings:readSetting("start_with") == "last" and isBook(last) then
+    if G_reader_settings:readSetting("start_with") == "last" and isBook(last) then
         return last
     end
 end
@@ -260,11 +274,14 @@ function Ebk:addToMainMenu(menu_items)
             local ConfirmBox = require("ui/widget/confirmbox")
             UIManager:show(ConfirmBox:new{
                 text = string.format(say(
-                    "打开 EBK 书时会先把它展开成 EPUB 放在缓存里，下次打开就不用再等。\n\n现在缓存了 %d 本，共 %.1f MB（上限 %d MB）。\n\n清空缓存不会影响书、阅读进度和笔记。",
-                    "An EBK book is written as an EPUB file into a cache when it is opened, so that the next time is fast.\n\n%d books are cached now, %.1f MB (limit %d MB).\n\nEmptying the cache does not touch books, reading positions or notes."),
+                    "打开 EBK 书时会先把它展开成 EPUB 放在缓存里，下次打开就不用再等。\n\n现在缓存了 %d 本，共 %.1f MB（上限约 %d MB）。\n\n清空缓存不会影响书、阅读进度和笔记。",
+                    "An EBK book is written as an EPUB file into a cache when it is opened, so that the next time is fast.\n\n%d books are cached now, %.1f MB (the limit is about %d MB).\n\nEmptying the cache does not touch books, reading positions or notes."),
                     count, bytes / 1048576, CACHE_BYTES / 1048576),
                 ok_text = say("清空缓存", "Empty the cache"),
                 ok_callback = function()
+                    if lfs.attributes(cache_dir, "mode") ~= "directory" then
+                        return
+                    end
                     local open = self.ui.document and self.ui.document.ebk_epub
                     for name in lfs.dir(cache_dir) do
                         local path = cache_dir .. "/" .. name

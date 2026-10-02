@@ -9,9 +9,12 @@ directory for patches, which reads what to do from the environment.
 
 <unpacked KOReader> is the directory with reader.lua (from the AppImage: squashfs-root/usr/lib/koreader).
 """
-import os, shutil, subprocess, sys
+import os, shutil, subprocess, sys, time
 
 from PIL import Image, ImageChops
+
+# pages of the illustrated book that are compared: enough of them in a row that some show pictures
+PICTURE_PAGES = range(8, 22)
 
 DRIVER = r"""
 local UIManager = require("ui/uimanager")
@@ -23,11 +26,45 @@ for _, name in ipairs{ "start_with", "ebk_cache_mb" } do
     if value then G_reader_settings:saveSetting(name, tonumber(value) or value) end
 end
 local delay = tonumber(env("EBK_TEST_DELAY") or "5")
-UIManager:scheduleIn(delay, function()
-    local ui = require("apps/reader/readerui").instance
-    if ui and env("EBK_TEST_GOTO") then ui:handleEvent(Event:new("GotoPage", tonumber(env("EBK_TEST_GOTO")))) end
-end)
-UIManager:scheduleIn(delay + 2, function()
+local emptied
+local function instance()
+    return require("apps/reader/readerui").instance or require("apps/filemanager/filemanager").instance
+end
+if env("EBK_TEST_OPEN") then -- as a tap on the book in the file browser does
+    UIManager:scheduleIn(delay, function() require("apps/reader/readerui"):showReader(env("EBK_TEST_OPEN")) end)
+    delay = delay + 4
+end
+if env("EBK_TEST_EMPTY_CACHE") then -- the menu entry, and "Empty the cache" in the box it shows
+    UIManager:scheduleIn(delay, function()
+        local items = {}
+        instance().ebk:addToMainMenu(items)
+        items.ebk.callback()
+        for _, window in ipairs(UIManager._window_stack) do
+            if window.widget.ok_callback then
+                window.widget.ok_callback()
+                UIManager:close(window.widget)
+                emptied = true
+                break
+            end
+        end
+    end)
+    delay = delay + 1
+end
+-- EBK_TEST_GOTO is a list of pages: each is shown and its screen kept as <shot>.<page>.png; the last stays open
+local pages = {}
+for page in (env("EBK_TEST_GOTO") or ""):gmatch("%d+") do table.insert(pages, tonumber(page)) end
+for i, page in ipairs(pages) do
+    UIManager:scheduleIn(delay + i - 1, function()
+        local ui = require("apps/reader/readerui").instance
+        if ui then
+            ui:handleEvent(Event:new("GotoPage", page))
+            UIManager:forceRePaint()
+            Device.screen:shot(env("EBK_TEST_SHOT") .. "." .. page .. ".png")
+        end
+    end)
+end
+delay = delay + #pages
+UIManager:scheduleIn(delay + 1, function()
     Device.screen:shot(env("EBK_TEST_SHOT"))
     local out = io.open(env("EBK_TEST_OUT"), "w")
     local ui = require("apps/reader/readerui").instance
@@ -47,6 +84,7 @@ UIManager:scheduleIn(delay + 2, function()
     for _, window in ipairs(UIManager._window_stack) do
         if type(window.widget.text) == "string" then out:write("message=", (window.widget.text:gsub("\n", " ")), "\n") end
     end
+    if emptied then out:write("emptied=yes\n") end
     out:close()
     if ui then ui:onClose() end -- as leaving the book does: the reading position is saved
     UIManager:quit(0)
@@ -91,9 +129,17 @@ def main():
         report["crashed"] = r.returncode != 0 or "stack traceback" in r.stdout + r.stderr
         return report
 
+    def screen(name):
+        return Image.open(os.path.join(work, name + ".png")).convert("RGB")
+
     def same_screen(a, b):
-        a, b = (Image.open(os.path.join(work, n + ".png")).convert("RGB") for n in (a, b))
+        a, b = screen(a), screen(b)
         return a.size == b.size and ImageChops.difference(a, b).getbbox() is None
+
+    def coloured(name):
+        """whether the screen shows a picture in colour (text and the interface are grey)"""
+        r, g, b = screen(name).split()
+        return ImageChops.difference(r, g).getbbox() is not None or ImageChops.difference(g, b).getbbox() is not None
 
     def book_fields(report):
         return {k: report.get(k) for k in ("pages", "page", "title", "toc")}
@@ -108,13 +154,19 @@ def main():
     open(os.path.join(books, "damaged.ebk"), "wb").write(open(book_ebk, "rb").read()[:-40])
 
     run("first-run")  # the first run shows the guide for new users,
+    fresh = run("fresh-empty", books, EBK_TEST_EMPTY_CACHE=1)
+    check("before any EBK book was opened: \"Empty the cache\" does nothing, and nothing breaks", fresh.get("emptied") == ["yes"] and not fresh["crashed"], str(fresh))
+    shutil.rmtree(cache, ignore_errors=True)  # the file browser had begun to prepare the books of the folder
     run("warm-up", epub)  # and the first book a notice about colour
-    for name, source, converted, page in (("book", epub, book_ebk, 12), ("pictures", ill_epub, ill_ebk, 5)):
-        as_epub = run(name + "-epub", source, EBK_TEST_GOTO=page)
-        as_ebk = run(name + "-ebk", converted, EBK_TEST_GOTO=page)
+    for name, source, converted, pages in (("book", epub, book_ebk, (30, 12)), ("pictures", ill_epub, ill_ebk, (*PICTURE_PAGES, 5))):
+        goto = ",".join(map(str, pages))
+        as_epub = run(name + "-epub", source, EBK_TEST_GOTO=goto)
+        as_ebk = run(name + "-ebk", converted, EBK_TEST_GOTO=goto)
         check(f"{name}: the EBK file opens as a book", as_ebk.get("file") == [converted] and not as_ebk["crashed"], str(as_ebk.get("file")))
-        check(f"{name}: the same pages, title and contents as the EPUB", book_fields(as_ebk) == book_fields(as_epub) and as_ebk.get("page") == [str(page)], str(book_fields(as_ebk)))
-        check(f"{name}: the same pixels on page {page}", same_screen(name + "-epub", name + "-ebk"))
+        check(f"{name}: the same pages, title and contents as the EPUB", book_fields(as_ebk) == book_fields(as_epub) and as_ebk.get("page") == [str(pages[-1])], str(book_fields(as_ebk)))
+        check(f"{name}: the same pixels on pages {goto}", same_screen(name + "-epub", name + "-ebk") and all(same_screen(f"{name}-epub.png.{p}", f"{name}-ebk.png.{p}") for p in pages))
+    with_pictures = [p for p in PICTURE_PAGES if coloured(f"pictures-ebk.png.{p}")]
+    check("pictures: pages with pictures were among those compared", bool(with_pictures), str(with_pictures))
 
     cached = sorted(os.listdir(cache))
     again = run("again", book_ebk)
@@ -123,9 +175,13 @@ def main():
     check("opened again: the cached EPUB is used", sorted(os.listdir(cache)) == cached and len(cached) == 2, str(cached))
     check("the reading position is kept with the .ebk file", os.path.isfile(os.path.join(books, "book.sdr", "metadata.ebk.lua")))
 
+    tapped = run("tapped", books, EBK_TEST_OPEN=book_ebk)
+    check("opened from the file browser", tapped.get("file") == [book_ebk] and tapped.get("page") == ["12"] and not tapped["crashed"], str(tapped))
+
     run("set-last", book_ebk, EBK_TEST_SET_start_with="last")
-    last = run("start-with-last")
-    check("KOReader starts with the last book, an EBK book", last.get("file") == [book_ebk] and last.get("page") == ["12"] and "message" not in last, str(last))
+    for name, options in (("start-with-last", ()), ("start-with-last-and-an-option", ("-d",))):
+        last = run(name, *options)
+        check(f"KOReader starts with the last book, an EBK book ({' '.join(options) or 'no options'})", last.get("file") == [book_ebk] and last.get("page") == ["12"] and "message" not in last, str(last))
     run("unset-last", book_ebk, EBK_TEST_SET_start_with="filemanager")
 
     browser = run("browser", books)
@@ -135,11 +191,26 @@ def main():
     check("a damaged file gives a message, not a crash", damaged.get("file") == ["none"] and not damaged["crashed"] and any("EBK" in m for m in damaged.get("message", [])), str(damaged.get("message")))
     check("a damaged file leaves nothing in the cache", sorted(os.listdir(cache)) == cached, str(os.listdir(cache)))
 
+    emptied = run("empty", book_ebk, EBK_TEST_EMPTY_CACHE=1)
+    check("\"Empty the cache\" leaves only the book that is open", emptied.get("emptied") == ["yes"] and len(os.listdir(cache)) == 1 and emptied.get("file") == [book_ebk], str(os.listdir(cache)))
+
     shutil.rmtree(cache)
+    os.makedirs(cache)
+    stale = os.path.join(cache, ".ebk-1-0.tmp")  # as a run that was stopped while writing leaves it
+    open(stale, "wb").write(b"x" * 1000)
+    os.utime(stale, (time.time() - 7200,) * 2)
     run("limit-1", ill_ebk, EBK_TEST_SET_ebk_cache_mb=1)
     limited = run("limit-2", book_ebk)
     check("the cache keeps to its limit, and keeps the book that is open", len(os.listdir(cache)) == 1 and limited.get("file") == [book_ebk], str(os.listdir(cache)))
+    check("what a stopped run left in the cache is removed", not os.path.exists(stale))
     run("limit-off", book_ebk, EBK_TEST_SET_ebk_cache_mb=256)
+
+    changing = os.path.join(books, "changing.ebk")
+    shutil.copy(ill_ebk, changing)
+    first = run("changing-1", changing)
+    shutil.copy(book_ebk, changing)
+    second = run("changing-2", changing)
+    check("another book under the same name is opened as that book", first.get("title") == as_ebk.get("title") and second.get("title") == again.get("title") != first.get("title"), str((first.get("title"), second.get("title"))))
 
     if library:
         shutil.rmtree(cache)

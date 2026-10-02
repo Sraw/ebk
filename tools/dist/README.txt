@@ -23,14 +23,17 @@ macOS:   第一次双击会被系统拦下。打开"系统设置 → 隐私与�
          The first double click is stopped by the system. Open System Settings → Privacy & Security and
          choose "Open Anyway" further down. (Older macOS: right-click the program, choose "Open", then
          "Open" again.) Only needed once.
-Linux:   如果双击没有反应，在文件夹里打开终端运行 ./ebk ；结果也会写进 ebk-convert.log。
-         If a double click does nothing, open a terminal in the folder and run ./ebk ; the result is also
-         written to ebk-convert.log.
+Linux:   如果双击没有反应：在文件夹里打开终端，运行 ./ebk 。
+         （不在终端里运行时没有窗口，结果写在文件夹里的 ebk-convert.log。）
+         If a double click does nothing: open a terminal in the folder and run ./ebk .
+         (Started without a terminal there is no window; the result is in ebk-convert.log in the folder.)
 
 把 .ebk 变回 EPUB / Getting an EPUB back
 ----------------------------------------
-在终端里运行 / In a terminal:    ebk epub 书.ebk -o 书.epub
-得到的 EPUB 里每个文件都与原书相同。 Every file inside is the same as in the original book.
+在终端里运行 / In a terminal:    ebk epub 书.ebk -o 书-还原.epub
+得到的 EPUB 里每个文件都与原书相同。已有的文件不会被覆盖，所以要给它另起一个名字。
+Every file inside is the same as in the original book. An existing file is never replaced, so give it
+a name of its own.
 
 怎么读 .ebk / Reading .ebk books
 --------------------------------

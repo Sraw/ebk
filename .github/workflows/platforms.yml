@@ -1,0 +1,74 @@
+# Builds the packages on Linux as tools/dist.sh does, then runs the converter that is in them on Windows and
+# macOS, where it cannot be run at home, the way a user does (tools/smoke_test.py), and the Rust tests there.
+name: platforms
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools for building for the other systems
+        run: |
+          rustup update stable && rustup default stable
+          rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl armv7-unknown-linux-musleabihf arm-unknown-linux-musleabi \
+            x86_64-pc-windows-gnu x86_64-apple-darwin aarch64-apple-darwin aarch64-linux-android armv7-linux-androideabi
+          pip install ziglang==0.15.2 cargo-zigbuild==0.23.4 brotli
+      - name: Tests
+        run: |
+          cargo test --release
+          python tools/ebk_vectors.py target/release/ebk "$RUNNER_TEMP/vectors" > vectors.log 2>&1 || { grep -E "^FAIL|Traceback" -A5 vectors.log; exit 1; }
+          tail -1 vectors.log
+      - name: Packages
+        run: tools/dist.sh
+      - name: The Linux package, as a user uses it
+        run: python tools/smoke_test.py dist/ebk-linux/ebk "$RUNNER_TEMP/smoke" crates/ebk/tests/data
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: dist/*.zip
+          retention-days: 14
+
+  run:
+    needs: packages
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, package: ebk-windows, program: ebk.exe }   # x86-64
+          - { os: windows-11-arm, package: ebk-windows, program: ebk.exe }   # the same program on ARM Windows
+          - { os: macos-latest, package: ebk-macos, program: ebk }           # Apple silicon
+          - { os: macos-15-intel, package: ebk-macos, program: ebk }         # Intel
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: packages
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unpack as a user would
+        run: cd packages && unzip -q ${{ matrix.package }}.zip && ls -l ${{ matrix.package }}
+      - name: The packaged program, as a user uses it
+        run: python tools/smoke_test.py packages/${{ matrix.package }}/${{ matrix.program }} "$RUNNER_TEMP/smoke" crates/ebk/tests/data
+      - name: What macOS says about a program that was downloaded
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: |
+          cd packages/${{ matrix.package }}
+          file ebk; lipo -archs ebk
+          codesign -dv --verbose=2 ebk 2>&1 || true
+          spctl --assess --type execute -v ebk 2>&1 || true
+          xattr -w com.apple.quarantine "0081;$(printf %x "$(date +%s)");Safari;" ebk
+          ./ebk --version; echo "started with the mark of a download: exit $?"
+      - name: The Rust tests, built here
+        run: cargo test --release

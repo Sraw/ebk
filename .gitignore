@@ -33,5 +33,5 @@ __pycache__/
 /dist/
 /tools/qemu/
 /tools/koreader/
-/tools/ndk/
 /.omc/project-memory.json
+/tools/avd/

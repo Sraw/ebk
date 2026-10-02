@@ -33,9 +33,11 @@ impl<W: Write> ZipWriter<W> {
     /// Adds a file. With `deflate` it is compressed when that makes it smaller.
     pub fn add(&mut self, name: &str, data: &[u8], deflate: bool) -> Result<()> {
         let too_large = || anyhow::anyhow!("the book is larger than a ZIP file without the 64-bit extension holds");
-        let raw_len = u32::try_from(data.len()).map_err(|_| too_large())?;
-        let offset = u32::try_from(self.at).map_err(|_| too_large())?;
-        if self.entries.len() == usize::from(u16::MAX) || name.len() > usize::from(u16::MAX) {
+        // the largest value of each field means "see the 64-bit extension" to a reader: stay below it
+        let small = |n: u64| u32::try_from(n).ok().filter(|&n| n < u32::MAX).ok_or_else(too_large);
+        let raw_len = small(data.len() as u64)?;
+        let offset = small(self.at)?;
+        if self.entries.len() + 1 >= usize::from(u16::MAX) || name.len() > usize::from(u16::MAX) {
             bail!("the book has more files than a ZIP file without the 64-bit extension holds");
         }
         let mut packed = Vec::new();
@@ -62,7 +64,7 @@ impl<W: Write> ZipWriter<W> {
 
     /// Writes the central directory and gives the writer back.
     pub fn finish(mut self) -> Result<W> {
-        let start = u32::try_from(self.at).map_err(|_| anyhow::anyhow!("the book is larger than a ZIP file without the 64-bit extension holds"))?;
+        let start = u32::try_from(self.at).ok().filter(|&n| n < u32::MAX).ok_or_else(|| anyhow::anyhow!("the book is larger than a ZIP file without the 64-bit extension holds"))?;
         let mut directory = Vec::new();
         for entry in &self.entries {
             directory.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
@@ -74,7 +76,7 @@ impl<W: Write> ZipWriter<W> {
             directory.extend_from_slice(&entry.name);
         }
         let count = self.entries.len() as u16;
-        let directory_len = u32::try_from(directory.len()).map_err(|_| anyhow::anyhow!("the directory of the ZIP file is too large"))?;
+        let directory_len = u32::try_from(directory.len()).ok().filter(|&n| n < u32::MAX).ok_or_else(|| anyhow::anyhow!("the directory of the ZIP file is too large"))?;
         directory.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
         directory.extend_from_slice(&[0; 4]); // this disk, the disk of the directory
         directory.extend_from_slice(&count.to_le_bytes());

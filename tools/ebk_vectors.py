@@ -696,12 +696,12 @@ def main():
         failures.append("bomb-out")
 
     # --- the members as an EPUB again
-    expect("epub: the members of an EBK file as an EPUB", True, ["epub", p("pictures.ebk"), "-o", p("pictures.out.epub")], "12 members")
+    expect("epub: the members of an EBK file as an EPUB", True, ["epub", p("pictures.ebk"), "-o", p("pictures.out.epub")], "12 files")
     expect("epub: that EPUB holds the same files", True, ["verify", p("pictures.ebk"), "--epub", p("pictures.out.epub")], "identical to the EPUB")
     expect("epub: an existing file is not replaced", False, ["epub", p("pictures.ebk"), "-o", p("pictures.out.epub")], "exists already")
     expect("epub: nor the EPUB next to the EBK file", False, ["epub", p("pictures.ebk")], "exists already")
-    expect("epub: without compression", True, ["epub", p("pictures.ebk"), "-o", p("pictures.stored.epub"), "--store"], "12 members")
-    expect("epub: a file that was not made from an EPUB", False, ["epub", p("lepton0.ebk"), "-o", p("lepton0.epub")], "no member \"mimetype\"")
+    expect("epub: without compression", True, ["epub", p("pictures.ebk"), "-o", p("pictures.stored.epub"), "--store"], "12 files")
+    expect("epub: a file that was not made from an EPUB", False, ["epub", p("lepton0.ebk"), "-o", p("lepton0.epub")], "it was not made from an EPUB")
     with zipfile.ZipFile(p("pictures.out.epub")) as packed, zipfile.ZipFile(p("pictures.stored.epub")) as stored:
         first = packed.infolist()[0]
         well_formed = (packed.testzip() is None and stored.testzip() is None and (first.filename, first.compress_type) == ("mimetype", 0)
@@ -713,8 +713,26 @@ def main():
         print("FAIL  lepton0.epub was created")
         failures.append("lepton0.epub")
 
+    os.symlink(p("nowhere"), p("dangling.epub"))
+    expect("epub: a link that leads nowhere is not replaced either", False, ["epub", p("pictures.ebk"), "-o", p("dangling.epub")], "exists already")
+    # an EPUB without the file "mimetype" is converted; the EPUB written from it gets the file
+    with zipfile.ZipFile(p("pictures.epub")) as whole, zipfile.ZipFile(p("bare.epub"), "w", zipfile.ZIP_DEFLATED) as bare:
+        for info in whole.infolist():
+            if info.filename != "mimetype":
+                bare.writestr(info.filename, whole.read(info))
+    expect("epub: an EPUB without \"mimetype\" is converted", True, ["convert", p("bare.epub")], "11 members")
+    expect("epub: and written as an EPUB with it", True, ["epub", p("bare.ebk"), "-o", p("bare.out.epub")], "12 files")
+    with zipfile.ZipFile(p("bare.out.epub")) as again, zipfile.ZipFile(p("bare.epub")) as bare:
+        first = again.infolist()[0]
+        completed = ((first.filename, first.compress_type, again.read("mimetype")) == ("mimetype", 0, b"application/epub+zip")
+                     and all(again.read(n) == bare.read(n) for n in bare.namelist()) and len(again.namelist()) == len(bare.namelist()) + 1)
+    print(f"{'ok  ' if completed else 'FAIL'}  epub: mimetype is first and stored, the other files are the book's")
+    if not completed:
+        failures.append("epub: EPUB without mimetype")
+
     # --- started without a command: every EPUB of a folder
     os.makedirs(p("folder"))
+    open(p("folder/ebk-convert.log"), "w").write("someone's notes\n")
     for name in ("plain.epub", "pictures.epub"):
         shutil.copy(p(name), p("folder"))
     open(p("folder/broken.epub"), "wb").write(b"not a ZIP file")
@@ -725,6 +743,11 @@ def main():
         print(f"{'ok  ' if good else 'FAIL'}  {name}: exit {r.returncode}  {r.stdout.strip().splitlines()[-2][:100] if r.stdout.strip() else ''}")
         if not good:
             failures.append(name)
+    kept = open(p("folder/ebk-convert.log")).read()
+    appended = kept.startswith("someone's notes\nEBK ")
+    print(f"{'ok  ' if appended else 'FAIL'}  folder mode: a file named like its log is added to, not replaced")
+    if not appended:
+        failures.append("folder mode: log")
     expect("folder mode: what it wrote is the book", True, ["verify", p("folder/pictures.ebk"), "--epub", p("pictures.epub")], "identical to the EPUB")
     print(f"\n{len(failures)} failures" + (": " + "; ".join(failures) if failures else ""))
     return 1 if failures else 0

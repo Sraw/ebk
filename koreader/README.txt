@@ -12,6 +12,7 @@ Copy the whole folder ebk.koplugin into KOReader's plugins folder, then restart 
   Kobo:     .adds/koreader/plugins/
   Kindle:   koreader/plugins/
   Android:  koreader/plugins/   （在内部存储里，没有就新建 / on the internal storage; create it if missing）
+            只支持 ARM 处理器的设备（绝大多数手机和平板）/ devices with ARM processors only (nearly all)
   Linux:    ~/.config/koreader/plugins/
   macOS:    ~/Library/Application Support/koreader/plugins/
 
@@ -22,8 +23,10 @@ Copy the whole folder ebk.koplugin into KOReader's plugins folder, then restart 
 Tap an .ebk book in the file browser. The first time a book is opened takes a moment (a book with many
 pictures may take ten seconds or more on an e-reader); after that it opens fast.
 
-插件把书展开成 EPUB 放在 KOReader 的缓存里（cache/ebk，默认最多 256 MB，旧的自动删掉）。
+插件把书展开成 EPUB 放在 KOReader 的缓存里（cache/ebk，默认大约 256 MB，超出后最久没打开的先删；
+正在读的那本不会删）。文件浏览器显示封面时也会在后台展开文件夹里的 EBK 书。
 "工具 → 更多工具 → EBK 缓存"里可以查看和清空。清空不影响书、进度和笔记。
-The plug-in keeps each opened book as an EPUB file in KOReader's cache (cache/ebk, 256 MB at most by default;
-the oldest are removed). See and empty it under Tools → More tools → EBK cache. Emptying it does not touch
-books, reading positions or notes.
+The plug-in keeps each opened book as an EPUB file in KOReader's cache (cache/ebk, about 256 MB by default;
+beyond that the books opened longest ago are removed, never the one being read). The file browser, when it
+shows covers, also prepares the EBK books of a folder in the background. See and empty the cache under
+Tools → More tools → EBK cache. Emptying it does not touch books, reading positions or notes.

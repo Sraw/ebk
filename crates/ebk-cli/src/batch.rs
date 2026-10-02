@@ -25,8 +25,10 @@ pub fn run(args: &[OsString]) -> ExitCode {
     let chinese = chinese();
     let say = |zh: &str, en: &str| if chinese { zh.to_owned() } else { en.to_owned() };
     let (folder, inputs, mut others) = inputs(args);
-    // without a terminal (a double click in a file manager on Linux) the lines go to a file in the folder as well
-    let mut out = Report { log: (!std::io::stdout().is_terminal()).then(|| File::create(folder.join(LOG_NAME)).ok()).flatten() };
+    // without a terminal (a double click in a file manager on Linux) the lines go to a file in the folder as
+    // well; added to what is in it: a file of that name may be someone's
+    let log = || File::options().append(true).create(true).open(folder.join(LOG_NAME)).ok();
+    let mut out = Report { log: (!std::io::stdout().is_terminal()).then(log).flatten() };
     out.line(&format!("EBK {}", env!("CARGO_PKG_VERSION")));
     others.sort();
     for other in &others {
@@ -46,7 +48,7 @@ pub fn run(args: &[OsString]) -> ExitCode {
     for (n, input) in inputs.iter().enumerate() {
         let name = input.file_name().unwrap_or(input.as_os_str()).to_string_lossy().into_owned();
         let head = format!("[{}/{}] {name}", n + 1, inputs.len());
-        if input.with_extension("ebk").exists() {
+        if input.with_extension("ebk").symlink_metadata().is_ok() {
             out.line(&format!("{head}: {}", say("已有同名的 .ebk，跳过", "the .ebk file is there already, skipped")));
             skipped += 1;
             continue;

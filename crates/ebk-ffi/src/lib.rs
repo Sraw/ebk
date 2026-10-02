@@ -2,7 +2,7 @@
 //! directory but not start a program from there, so the KOReader plug-in uses this instead of the program.
 
 use std::ffi::{c_char, c_int, CStr};
-use std::path::Path;
+use std::path::PathBuf;
 
 /// Writes the members of the EBK file `ebk` as the EPUB file `epub`, which must not exist; with `store` not
 /// zero, without compression. Gives 0, or 1 with the reason in `message` (UTF-8, ends with a zero byte, cut to
@@ -16,8 +16,8 @@ pub unsafe extern "C" fn ebk_to_epub(ebk: *const c_char, epub: *const c_char, st
     let (ebk, epub) = (CStr::from_ptr(ebk).to_bytes().to_vec(), CStr::from_ptr(epub).to_bytes().to_vec());
     // a panic must not cross into the program that called (the JPEG codec's are caught further in already)
     let result = std::panic::catch_unwind(|| {
-        let (Ok(ebk), Ok(epub)) = (std::str::from_utf8(&ebk), std::str::from_utf8(&epub)) else { return Err("the file names are not UTF-8".to_owned()) };
-        ebk_cli::to_epub(Path::new(ebk), Path::new(epub), store != 0, ebk_cli::DEFAULT_MAX_OUTPUT, ebk_core::MAX_MEMBER_LEN).map_err(|e| format!("{e:#}"))
+        let (Some(ebk), Some(epub)) = (path(&ebk), path(&epub)) else { return Err("the file names are not UTF-8".to_owned()) };
+        ebk_cli::to_epub(&ebk, &epub, store != 0, ebk_cli::DEFAULT_MAX_OUTPUT, ebk_core::MAX_MEMBER_LEN).map_err(|e| format!("{e:#}"))
     });
     let error = match result {
         Ok(Ok(_)) => return 0,
@@ -33,4 +33,17 @@ pub unsafe extern "C" fn ebk_to_epub(ebk: *const c_char, epub: *const c_char, st
         *message.add(len) = 0;
     }
     1
+}
+
+/// A file name as the system has it: any bytes on Unix, UTF-8 elsewhere.
+fn path(bytes: &[u8]) -> Option<PathBuf> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        Some(PathBuf::from(std::ffi::OsStr::from_bytes(bytes)))
+    }
+    #[cfg(not(unix))]
+    {
+        std::str::from_utf8(bytes).ok().map(PathBuf::from)
+    }
 }
