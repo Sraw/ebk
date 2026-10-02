@@ -21,3 +21,6 @@ python compare.py out                                     # the screens of the t
 ```
 
 The first start of KOReader after it is installed should be one without the test driver in place.
+
+On the virtual device KOReader sometimes leaves right after it starts - before it looks for plug-ins, and with
+EPUB files as well as EBK files; `run.sh` starts it again when that happens.
