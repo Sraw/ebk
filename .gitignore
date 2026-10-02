@@ -28,3 +28,7 @@
 __pycache__/
 /.omc/state/
 /.omc/autoresearch/*/pg_catalog.csv
+/tools/zig/
+/tools/cargo-tools/
+/dist/
+/tools/qemu/
