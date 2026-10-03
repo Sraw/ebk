@@ -16,10 +16,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 import brotli
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".omc", "autoresearch", "ebook-container-compression"))
-import evaluate as ev
-
 MAGIC, END_MAGIC = b"\x89EBK\r\n\x1a\n", b"EBK\x1a"
+
+
+def is_image(data):
+    """JPEG, PNG, GIF or WebP, by their first bytes (exporters do not always keep the extensions)."""
+    return data[:3] == b"\xff\xd8\xff" or data[:8] == b"\x89PNG\r\n\x1a\n" or data[:6] in (b"GIF87a", b"GIF89a") or (data[:4] == b"RIFF" and data[8:12] == b"WEBP")
 # Storage mode 4 is decoded by lepton_jpeg as published on crates.io (tools/lepton-check), not by the ebk crate.
 UNLEPTON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lepton-check", "target", "release", "unlepton")
 
@@ -222,7 +224,7 @@ def check(binary, out_dir, epub):
         assert set(got) == set(want), f"member names differ: {sorted(set(got) ^ set(want))[:3]}"
         bad = [n for n in want if hashlib.sha256(got[n]).digest() != hashlib.sha256(want[n]).digest()]
         assert not bad, f"members differ: {bad[:3]}"
-        images = sum(stored[n][1] for n, d in want.items() if ev.sniff(n, d) in ev.IMAGE_KINDS)
+        images = sum(stored[n][1] for n, d in want.items() if is_image(d))
         modes = [m for m, _ in stored.values()]
         return {"book": book, "epub": os.path.getsize(epub), "ebk": len(blob), "text_view": len(blob) - images, "index": index_len, "blocks": blocks,
                 "members": len(want), "in_stream": modes.count(0) + modes.count(1), "coded": modes.count(1), "brotli_resources": modes.count(3), "jpeg": modes.count(4),

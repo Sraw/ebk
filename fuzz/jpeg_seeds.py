@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Seeds for the `jpeg`, `lepton`, `lepton_header` and `jpeg_encode` fuzz targets: small JPEG files of many kinds, and the Lepton file of each.
 
-Usage: .venv/bin/python fuzz/jpeg_seeds.py     (needs Pillow; builds phase3/lepton-wasm for the encoder)
+Usage: .venv/bin/python fuzz/jpeg_seeds.py     (needs Pillow; builds tools/lepton-check for the encoder)
 Kinds: grey and colour, three chroma subsamplings, baseline and progressive, with and without optimised Huffman
 tables, restart markers, several qualities and sizes that are not multiples of the block size, files with
 metadata, with bytes after the end marker, and cut short at several places.
@@ -56,7 +56,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         for name, data in files.items():
             open(os.path.join(tmp, name + ".jpg"), "wb").write(data)
-        bench = os.path.join(here, "..", "phase3", "lepton-wasm")
+        bench = os.path.join(here, "..", "tools", "lepton-check")
         subprocess.run(["cargo", "build", "--quiet", "--release", "--bin", "seed"], cwd=bench, check=True)
         corpus = os.path.join(here, "corpus", "jpeg")
         os.makedirs(corpus, exist_ok=True)

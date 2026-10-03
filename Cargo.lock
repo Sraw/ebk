@@ -240,13 +240,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ebk-wasm"
-version = "0.1.0"
-dependencies = [
- "ebk",
-]
-
-[[package]]
 name = "flate2"
 version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"

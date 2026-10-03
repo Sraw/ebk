@@ -6,9 +6,12 @@ EBK 是一种电子书阅读格式，由 EPUB 转换而来，比 EPUB 小：整�
 书里的每个文件（章节、样式、图片、字体）都按原来的路径保存，读出来与 EPUB 里的逐字节相同；阅读时用 EPUB 的排版引擎显示，
 所以分章、目录跳转、排版都和 EPUB 一样。变的只是外面的容器：
 
-- 文字拼在一起按块用 brotli 压缩：几乎和整本一起压一样小，但打开某一章不用先解压整本书；
+- 文字拼在一起按块（每块约 4 MB）用 brotli 压缩，几乎和整本一起压一样小；
 - 每本书自带一张码表，常用字只占 1–2 个字节，中文因此再小约 10%；
 - JPEG 图片用 Lepton 无损地重新压缩：小约 20%，还原出来与原图逐字节相同。
+
+现在的阅读方式（KOReader 插件、电脑上双击打开）都是第一次打开时把整本书转成 EPUB 放进缓存，交给 EPUB 阅读器显示，
+所以第一次打开要等一会儿，之后直接用缓存。格式本身允许只解压某一章所在的那一块，但现在的工具没有用到这一点。
 
 EBK 是单向的：能从 `.ebk` 得到一个文件内容相同的 EPUB，但不是原来那个 ZIP 文件（文件顺序、时间等不保留）。
 EBK 没有 DRM，也不加密。
@@ -52,10 +55,8 @@ Pro Git，24 种其它语言），加上 144 本中文网文抽样（网文不�
 
 **速度**
 
-- 转换比较慢：文字用 brotli 的最高压缩档。大多数书 1 秒左右；纯文字的大书，如 13.5 MB 的网文要 13 秒，16 MB 的《宋史》要 9.5 秒。
-- 读取不慢：文字每秒约 170 MB，与读 ZIP 相当；JPEG 还原约每秒 10 MB，一张插图晚十几毫秒出现。
-
-详细数据见 `report/evaluation.md` 和 `phase5/results.md`。
+- 转换比较慢：文字用 brotli 的最高压缩档，十几 MB 的纯文字大书在普通电脑上要十几秒，大多数书一两秒。
+- 读取：文字和读 EPUB 的 ZIP 差不多快；JPEG 要先还原，比直接读慢得多，带大量 JPEG 的书第一次打开要多等一会儿。
 
 ## 怎么用
 
@@ -106,17 +107,6 @@ KOReader 装上插件后能直接打开 `.ebk`，支持 Kobo、Kindle（需要�
 把 `ebk.koplugin.zip` 解压，把 `ebk.koplugin` 文件夹放进 KOReader 的 `plugins` 文件夹，重启 KOReader；各设备的路径见 `koreader/README.txt`。
 插件把书转成 EPUB 放进 KOReader 的缓存（默认最多 256 MB），交给 KOReader 的 EPUB 引擎显示；阅读进度、书签、笔记都记在 `.ebk` 文件名下。
 
-### 在浏览器里读
-
-网页阅读器在 `reader/`，需要通过网址访问，不能双击本地网页打开：
-
-```
-reader/build.sh                          # 需要 Rust 的 wasm32-unknown-unknown 目标
-python3 -m http.server -d reader 8000    # 然后打开 http://localhost:8000，选一个 .ebk 文件
-```
-
-书不会上传，只在浏览器里读。打开后在后台把整本的文字解出来，跳章节不用等。
-
 ### 变回 EPUB，以及命令行
 
 ```
@@ -132,11 +122,11 @@ ebk folder/ a.epub                      # 不带命令：转换这些，和双�
 
 ## 已知的局限
 
-- 没有在真机上测过：Kindle、Kobo 上的程序只在 `qemu-user` 里跑过，Android 只在虚拟机里跑过，网页阅读器没在 Safari 和真手机上试过。
+- 没有在真机上测过：Kindle、Kobo 上的程序只在 `qemu-user` 里跑过，Android 只在虚拟机里跑过。
 - Windows 和 macOS 的程序在 GitHub 的机器上测过（Windows x86-64 和 ARM，macOS 的 Apple 芯片和 Intel），但没有真正用鼠标双击过。
 - macOS 第一次打开会被系统拦一次（没有开发者签名）。
 - PNG 图片几乎压不动。
-- 试过、但决定不用的：常用词组编码（只省约 2%），以及 PPMd 压缩（文字能再小 11–21%，但在 Kindle 上解压太慢），见 `phase5/results.md`。
+- 试过、但决定不用的：常用词组编码（只省约 2%），以及 PPMd 压缩（文字能再小 11–21%，但在 Kindle 上解压太慢）。
 
 ## 仓库里有什么
 
@@ -147,11 +137,9 @@ ebk folder/ a.epub                      # 不带命令：转换这些，和双�
 | `crates/ebk-cli` | 程序 `ebk` |
 | `crates/ebk-ffi` | `ebk epub` 的 C 接口共享库（Android 上插件不能启动程序） |
 | `koreader/` | KOReader 插件 |
-| `crates/ebk-wasm`、`reader/` | WebAssembly 版的读取器和网页阅读器（排版用 foliate-js） |
 | `third_party/lepton_jpeg` | 存储方式 4 所依据的 JPEG 编解码器：`lepton_jpeg` 0.5.8 的分支，在这里维护（编码结果不变，能拒绝损坏的文件；见其中的 `EBK-CHANGES.md`） |
 | `tools/` | 打包脚本，Python 写的独立读取器（`ebk_check.py`），测试向量，各种测试 |
 | `fuzz/` | 模糊测试（libFuzzer，稳定版工具链） |
-| `phase0/` … `phase5/`、`report/` | 实验和测量结果（中文） |
 
 ## 构建和测试
 
@@ -161,8 +149,6 @@ cargo test --release
 python tools/ebk_vectors.py target/release/ebk /tmp/vectors              # 每个文件违反一条规则的测试向量
 python tools/ebk_check.py target/release/ebk out/ out.json corpus/       # 转换，再用 Python 读取器检查
 python tools/ebk_differential.py target/release/ebk /tmp/vectors         # 两个读取器结论是否一致
-tools/wasm32-check/run.sh 256 $(ls /tmp/vectors/*.ebk | grep -v bomb)    # 原生与 wasm32 是否一致
-node tools/browser/api-test.mjs /tmp/vectors target/release/ebk          # 网页阅读器的接口，Chromium 和 Firefox
 fuzz/run.sh raw 600                                                      # 还有 index、roundtrip、epub、jpeg、lepton、lepton_header、jpeg_encode
 python tools/lepton_compare.py corpus/                                   # 改了编解码器之后：编码结果与发布的版本相同
 python tools/koreader_test.py <KOReader> dist/ebk.koplugin target/release/ebk /tmp/ko book.epub pictures.epub target/release/libebkffi.so
@@ -182,16 +168,16 @@ tools/dist.sh                                                            # dist/
 
 其它说明：
 
-- Python 工具需要 `brotli`；浏览器测试需要 Playwright（`tools/browser/package.json`）。
+- Python 工具需要 `brotli`。
 - `ebk_check.py` 还需要先构建 `tools/lepton-check`（在那里运行 `cargo build --release`），它用发布的编解码器解 JPEG，
   而不是 `third_party/` 里的那份。
 - 各个 crate 的版本 0.1.0 是软件的版本，格式的版本是 1.0。
-- 测试语料不在仓库里，都是公有领域和自由许可的书，用 `.omc/autoresearch/ebook-container-compression/` 和 `phase0/` 里的脚本下载。
+- 测试用的书不在仓库里：体积数据来自公有领域和自由许可的书（Project Gutenberg、维基文库、Standard Ebooks 等）。
 
 ## 许可
 
 代码：MIT 或 Apache-2.0，任选（`LICENSE-MIT`、`LICENSE-APACHE`）。规范：CC BY 4.0。
-`third_party/lepton_jpeg` 是 Apache-2.0（Microsoft）；`reader/foliate-js` 是 MIT（John Factotum）。
+`third_party/lepton_jpeg` 是 Apache-2.0（Microsoft）。
 
 ---
 
@@ -202,10 +188,14 @@ smaller for books of plain text, nearly half for Chinese web novels. Every file 
 pictures, fonts) is kept under its original path and reads back byte for byte as in the EPUB; it is shown by an EPUB
 rendering engine, so chapters, the table of contents and the layout are those of the EPUB. Only the container changes:
 
-- text is joined and compressed in blocks with brotli: nearly as small as one stream for the whole book, yet a chapter
-  opens without decompressing the rest;
+- text is joined and compressed with brotli in blocks of about 4 MB: nearly as small as one stream for the whole book;
 - each book carries a code page of its own, in which frequent characters take 1–2 bytes: about 10% more off Chinese;
 - JPEG pictures are recompressed losslessly with Lepton: about 20% smaller, the same bytes back.
+
+The ways of reading there are now (the KOReader plug-in, a double click on a computer) turn the whole book into an
+EPUB file in a cache the first time it is opened and give that to an EPUB reader: the first opening takes a moment,
+later ones use the cache. The format would let a reader decompress only the block a chapter is in, but these tools do
+not make use of it.
 
 EBK is one-way: an `.ebk` file gives an EPUB with the same files, but not the ZIP file it was made from (order and
 time stamps are not kept). EBK has no DRM and no encryption.
@@ -251,12 +241,10 @@ So a book of many PNG pictures is only 1–2% smaller than its EPUB. No book is 
 
 **Speed**
 
-- Converting is slow, because text is compressed with brotli's highest setting. Most books take about a second; large
-  books of text take longer, such as 13 s for a 13.5 MB web novel and 9.5 s for a 16 MB history.
-- Reading is not slow: text at about 170 MB/s, as fast as reading the ZIP; JPEG is restored at about 10 MB/s, so a
-  picture appears some ten milliseconds later.
-
-Details: `report/evaluation.md` and `phase5/results.md` (in Chinese).
+- Converting is slow, because text is compressed with brotli's highest setting: a large book of plain text (over 10 MB)
+  takes ten seconds or more on an ordinary computer, most books a second or two.
+- Reading: text about as fast as from the ZIP of an EPUB; JPEG has to be restored first, which is much slower, so a book
+  with many JPEG pictures takes longer to open the first time.
 
 ## Use
 
@@ -311,18 +299,6 @@ With the plug-in, KOReader opens `.ebk` files: Kobo, Kindle (with KOReader insta
 each device is in `koreader/README.txt`. The plug-in turns the book into an EPUB file in KOReader's cache (at most
 256 MB by default) and gives that to KOReader's EPUB engine; reading position, bookmarks and notes belong to the `.ebk` file.
 
-### Reading in a browser
-
-The web reader is in `reader/`. It has to be opened through a web address, not as a local file:
-
-```
-reader/build.sh                          # needs the Rust target wasm32-unknown-unknown
-python3 -m http.server -d reader 8000    # then open http://localhost:8000 and choose an .ebk file
-```
-
-The book is not uploaded; it is read in the browser. After opening, the whole text is decoded in the background, so
-turning to any chapter waits for nothing.
-
 ### Back to EPUB, and the command line
 
 ```
@@ -338,14 +314,13 @@ ebk folder/ a.epub                      # no command: convert these, as a double
 
 ## Known limits
 
-- Not tried on real devices: the programs for Kindle and Kobo ran under `qemu-user`, Android only on a virtual device,
-  the web reader not in Safari or on a real phone.
+- Not tried on real devices: the programs for Kindle and Kobo ran under `qemu-user`, Android only on a virtual device.
 - The Windows and macOS programs were tested on GitHub's machines (Windows x86-64 and ARM, macOS on Apple silicon and
   Intel), but never with a real double click of the mouse.
 - macOS stops the program once the first time (no developer signature).
 - PNG pictures hardly get smaller.
 - Tried and not used: coding frequent phrases (about 2%), and PPMd (text 11–21% smaller, but too slow to decode on a
-  Kindle); see `phase5/results.md`.
+  Kindle).
 
 ## What is here
 
@@ -356,11 +331,9 @@ ebk folder/ a.epub                      # no command: convert these, as a double
 | `crates/ebk-cli` | the program `ebk` |
 | `crates/ebk-ffi` | `ebk epub` as a shared library with a C interface (on Android a plug-in cannot start a program) |
 | `koreader/` | the KOReader plug-in |
-| `crates/ebk-wasm`, `reader/` | the reader as WebAssembly and the web reader (rendering by foliate-js) |
 | `third_party/lepton_jpeg` | the JPEG codec storage mode 4 is defined by: a fork of `lepton_jpeg` 0.5.8 maintained here (same coded stream, refuses damaged files; see its `EBK-CHANGES.md`) |
 | `tools/` | packaging, an independent reader in Python (`ebk_check.py`), test vectors, tests |
 | `fuzz/` | fuzz targets (libFuzzer, stable toolchain) |
-| `phase0/` … `phase5/`, `report/` | experiments and measurements (Chinese) |
 
 ## Building and testing
 
@@ -370,8 +343,6 @@ cargo test --release
 python tools/ebk_vectors.py target/release/ebk /tmp/vectors              # files that break one rule each
 python tools/ebk_check.py target/release/ebk out/ out.json corpus/       # convert, then check with the Python reader
 python tools/ebk_differential.py target/release/ebk /tmp/vectors         # do the two readers agree
-tools/wasm32-check/run.sh 256 $(ls /tmp/vectors/*.ebk | grep -v bomb)    # native against wasm32
-node tools/browser/api-test.mjs /tmp/vectors target/release/ebk          # the web reader's API in Chromium and Firefox
 fuzz/run.sh raw 600                                                      # also: index, roundtrip, epub, jpeg, lepton, lepton_header, jpeg_encode
 python tools/lepton_compare.py corpus/                                   # after a change to the codec: same coded stream as the published crate
 python tools/koreader_test.py <KOReader> dist/ebk.koplugin target/release/ebk /tmp/ko book.epub pictures.epub target/release/libebkffi.so
@@ -392,14 +363,14 @@ and the Rust tests), and builds and tries `EBK.app` on a Mac (`tools/dist/macos/
 
 Other notes:
 
-- The Python tools need `brotli`; the browser tests need Playwright (`tools/browser/package.json`).
+- The Python tools need `brotli`.
 - `ebk_check.py` also needs `tools/lepton-check` built (`cargo build --release` there). It decodes JPEG members with
   the published codec, not the copy in `third_party/`.
 - The crates are version 0.1.0; that is the version of the software, not of the format (1.0).
-- The test corpus is not in the repository. It is public-domain and freely licensed books, downloaded by the scripts in
-  `.omc/autoresearch/ebook-container-compression/` and `phase0/`.
+- The test books are not in the repository; the sizes above come from public-domain and freely licensed books (Project
+  Gutenberg, Wikisource, Standard Ebooks and others).
 
 ## Licence
 
 Code: MIT or Apache-2.0, at your option (`LICENSE-MIT`, `LICENSE-APACHE`). Specification: CC BY 4.0.
-`third_party/lepton_jpeg` is Apache-2.0 (Microsoft); `reader/foliate-js` is MIT (John Factotum).
+`third_party/lepton_jpeg` is Apache-2.0 (Microsoft).

@@ -5,8 +5,8 @@
 name: platforms
 on:
   push:
-    # what these jobs do not run: the web reader, experiments, texts (each run costs about 75 minutes of the quota)
-    paths-ignore: ["reader/**", "tools/browser/**", "phase*/**", "report/**", "spec/**", "**.md"]
+    # what these jobs do not run: texts (each run costs about 75 minutes of the quota)
+    paths-ignore: ["spec/**", "**.md"]
   workflow_dispatch:
 
 jobs:

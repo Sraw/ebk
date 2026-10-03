@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["crates/ebk", "crates/ebk-cli", "crates/ebk-ffi", "crates/ebk-wasm"]
-exclude = ["phase0", "phase3", "third_party", "fuzz", "tools"]
+members = ["crates/ebk", "crates/ebk-cli", "crates/ebk-ffi"]
+exclude = ["third_party", "fuzz", "tools"]
 
 [workspace.package]
 version = "0.1.0"

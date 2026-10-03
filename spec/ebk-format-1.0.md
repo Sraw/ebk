@@ -2,7 +2,7 @@
 
 Status: release candidate, 2026-10-02. This is the English text of the specification; `ebk-format-1.0.zh.md` is the
 same specification in Chinese, in which it was drafted. Where the two differ, this text governs.
-Reference implementation: `crates/ebk` (reader and writer), `crates/ebk-cli` (converter), `crates/ebk-wasm` (reader for the web).
+Reference implementation: `crates/ebk` (reader and writer), `crates/ebk-cli` (converter).
 Licence of this document: CC BY 4.0.
 
 The words "must", "must not", "should" and "may" are used as MUST, MUST NOT, SHOULD and MAY in RFC 2119.
