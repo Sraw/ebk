@@ -2,10 +2,14 @@
 # macOS, where it cannot be run at home, the way a user does (tools/smoke_test.py), and the Rust tests there.
 # On a Mac it also builds EBK.app (which needs osacompile and codesign), tries it (tools/macos_app_test.py) and
 # makes the macOS package with it: the artifact "ebk-macos".
+# A tag v<version> (the version in Cargo.toml) also publishes these packages as a GitHub release: job "release".
 name: platforms
 on:
   push:
-    # what these jobs do not run: texts (each run costs about 75 minutes of the quota)
+    branches: ["**"]
+    # a tag v0.2.0 makes the release v0.2.0; v0.2.0-rc.1 makes a draft pre-release, seen only by the owner
+    tags: ["v*"]
+    # what these jobs do not run: texts (each run costs about 75 minutes of the quota; not applied to tags)
     paths-ignore: ["spec/**", "**.md"]
   workflow_dispatch:
 
@@ -112,3 +116,52 @@ jobs:
           name: ebk-macos
           path: packages/ebk-macos.zip
           retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [packages, run, macos-app]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: release
+      # the macOS package with EBK.app takes the place of the one without
+      - uses: actions/download-artifact@v4
+        with:
+          name: ebk-macos
+          path: release
+      - name: The tag names the version that was built
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          case "$TAG" in
+            "v$version" | "v$version"-*) echo "version $version, tag $TAG" ;;
+            *) echo "the tag $TAG is not v$version (Cargo.toml)"; exit 1 ;;
+          esac
+      - name: Checksums
+        run: cd release && sha256sum *.zip > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: The release
+        run: |
+          # the notes are the message of an annotated tag (git tag -a); a plain tag gets notes made by GitHub
+          notes=()
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" -q .object.type)" = tag ]; then
+            gh api "repos/$GITHUB_REPOSITORY/git/tags/$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" -q .object.sha)" -q .message > "$RUNNER_TEMP/notes.md"
+            notes=(--notes-file "$RUNNER_TEMP/notes.md")
+          else
+            notes=(--generate-notes)
+          fi
+          kind=()
+          case "$TAG" in *-*) kind=(--draft --prerelease) ;; esac
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            # made by hand before: the packages are replaced, the rest (notes, the Android app) stays
+            gh release upload "$TAG" release/* --clobber
+          else
+            gh release create "$TAG" release/* --title "EBK ${TAG#v}" --verify-tag "${kind[@]}" "${notes[@]}"
+          fi
+          gh release view "$TAG" --json assets -q '.assets[].name'

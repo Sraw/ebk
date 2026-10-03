@@ -177,6 +177,11 @@ tools/dist.sh                                                            # dist/
 `.github/workflows/platforms.yml` 在 GitHub 的 Windows 和 macOS 机器上运行打包好的程序（`smoke_test.py` 和 Rust 测试），
 并在 Mac 上构建、测试 `EBK.app`（`tools/dist/macos/build-app.sh`、`tools/macos_app_test.py`）。
 
+发布新版本：改 `Cargo.toml` 里的 `version`，提交，再打一个带说明的标签并推送，例如
+`git tag -a v0.2.0 -F 说明.md && git push origin v0.2.0`。上面的测试都通过后，CI 用这些包建好发布页，
+标签的说明就是发布说明；外加 `SHA256SUMS.txt`。`v0.2.0-rc.1` 这样的标签只建草稿，别人看不到。
+Readest EBK 的安装包要在本机编译签名，之后用 `gh release upload v0.2.0 Readest-EBK-arm64.apk` 补上。
+
 其它说明：
 
 - Python 工具需要 `brotli`。
@@ -384,6 +389,12 @@ tools/dist.sh                                                            # dist/
 `.github/workflows/platforms.yml` runs the packaged programs on GitHub's Windows and macOS machines (`smoke_test.py`
 and the Rust tests), and builds and tries `EBK.app` on a Mac (`tools/dist/macos/build-app.sh`,
 `tools/macos_app_test.py`).
+
+A new version: change `version` in `Cargo.toml`, commit, then push an annotated tag, such as
+`git tag -a v0.2.0 -F notes.md && git push origin v0.2.0`. When the jobs above pass, CI makes the release with those
+packages and `SHA256SUMS.txt`; the message of the tag is the release notes. A tag like `v0.2.0-rc.1` makes only a
+draft, which others do not see. The Readest EBK app is built and signed at home and added afterwards with
+`gh release upload v0.2.0 Readest-EBK-arm64.apk`.
 
 Other notes:
 
