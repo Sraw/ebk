@@ -10,8 +10,9 @@ EBK 是一种电子书阅读格式，由 EPUB 转换而来，比 EPUB 小：整�
 - 每本书自带一张码表，常用字只占 1–2 个字节，中文因此再小约 10%；
 - JPEG 图片用 Lepton 无损地重新压缩：小约 20%，还原出来与原图逐字节相同。
 
-现在的阅读方式（KOReader 插件、电脑上双击打开）都是第一次打开时把整本书转成 EPUB 放进缓存，交给 EPUB 阅读器显示，
-所以第一次打开要等一会儿，之后直接用缓存。格式本身允许只解压某一章所在的那一块，但现在的工具没有用到这一点。
+在哪里读：安卓手机和平板用 Readest EBK（Readest 阅读器的分支，直接打开 `.ebk`）；Kobo、Kindle 等用装了插件的 KOReader；
+电脑上双击 `.ebk` 用已有的 EPUB 阅读器打开。KOReader 插件和电脑上的做法是第一次打开时把整本书转成 EPUB 放进缓存，
+之后直接用缓存；Readest EBK 不生成 EPUB 文件，直接从 `.ebk` 里读。
 
 EBK 是单向的：能从 `.ebk` 得到一个文件内容相同的 EPUB，但不是原来那个 ZIP 文件（文件顺序、时间等不保留）。
 EBK 没有 DRM，也不加密。
@@ -62,16 +63,17 @@ Pro Git，24 种其它语言），加上 144 本中文网文抽样（网文不�
 
 ### 获取程序
 
-现在还没有公开发布。程序由 `tools/dist.sh` 打包到 `dist/`：
+从 [Releases](https://github.com/Sraw/ebk/releases) 下载：
 
 | 包 | 内容 |
 |---|---|
-| `ebk-windows.zip` | `ebk.exe` |
-| `ebk-macos.zip` | `ebk`（Apple 芯片和 Intel 通用）；带 `EBK.app` 的版本由 GitHub 上的 macOS 任务构建（下载件 `ebk-macos`） |
-| `ebk-linux.zip` | `ebk`（x86-64，静态链接） |
+| `ebk-windows.zip` | 转换工具 `ebk.exe` |
+| `ebk-macos.zip` | 转换工具 `ebk`（Apple 芯片和 Intel 通用）和 `EBK.app` |
+| `ebk-linux.zip` | 转换工具 `ebk`（x86-64，静态链接） |
+| `Readest-EBK-arm64.apk` | 安卓阅读器 Readest EBK |
 | `ebk.koplugin.zip` | KOReader 插件 |
 
-每个包里都有中英文的使用说明 `README.txt`。
+每个转换工具和插件的包里都有中英文的使用说明 `README.txt`。自己构建见后面的"构建和测试"。
 
 ### 把 EPUB 转成 EBK
 
@@ -101,7 +103,15 @@ SumatraPDF，或 macOS 的"图书"。同一本书每次都是同一个缓存文�
 | macOS | 把 `EBK.app` 拖进"应用程序"，打开一次。之后双击 `.ebk` 就用它打开；把 EPUB 拖到 `EBK.app` 上也能转换。 | 删掉 `EBK.app` |
 | Linux | 在终端里运行一次 `./ebk associate`。之后别挪动程序。 | `./ebk associate --remove` |
 
-### 在阅读器和手机上读：KOReader
+### 在安卓手机和平板上读：Readest EBK
+
+Readest EBK 是 [Readest](https://github.com/readest/readest) 加上 EBK 支持的分支（源码：
+[Sraw/readest 的 `ebk` 分支](https://github.com/Sraw/readest/tree/ebk)）。装上 `Readest-EBK-arm64.apk`
+（Android 8.0 以上、64 位 ARM 设备；手机会要求允许安装未知来源的应用），在书库里导入 `.ebk` 文件，
+或者在文件管理器里点 `.ebk` 文件选 Readest EBK 打开。它能和应用商店里的 Readest 同时安装，书库各自独立；
+也照常能读 EPUB、PDF 等。账号和云同步用的是 Readest 的服务，同步过去的 `.ebk` 书在官方 Readest 里打不开。
+
+### 在电子墨水阅读器上读：KOReader
 
 KOReader 装上插件后能直接打开 `.ebk`，支持 Kobo、Kindle（需要已经装好 KOReader）、Android 和 Linux。
 把 `ebk.koplugin.zip` 解压，把 `ebk.koplugin` 文件夹放进 KOReader 的 `plugins` 文件夹，重启 KOReader；各设备的路径见 `koreader/README.txt`。
@@ -122,7 +132,8 @@ ebk folder/ a.epub                      # 不带命令：转换这些，和双�
 
 ## 已知的局限
 
-- 没有在真机上测过：Kindle、Kobo 上的程序只在 `qemu-user` 里跑过，Android 只在虚拟机里跑过。
+- 没有在真机上测过：Kindle、Kobo 上的程序只在 `qemu-user` 里跑过，Android（Readest EBK 和 KOReader 插件）只在虚拟机里跑过。
+- Readest EBK 只有 64 位 ARM 的安装包。
 - Windows 和 macOS 的程序在 GitHub 的机器上测过（Windows x86-64 和 ARM，macOS 的 Apple 芯片和 Intel），但没有真正用鼠标双击过。
 - macOS 第一次打开会被系统拦一次（没有开发者签名）。
 - PNG 图片几乎压不动。
@@ -192,10 +203,10 @@ rendering engine, so chapters, the table of contents and the layout are those of
 - each book carries a code page of its own, in which frequent characters take 1–2 bytes: about 10% more off Chinese;
 - JPEG pictures are recompressed losslessly with Lepton: about 20% smaller, the same bytes back.
 
-The ways of reading there are now (the KOReader plug-in, a double click on a computer) turn the whole book into an
-EPUB file in a cache the first time it is opened and give that to an EPUB reader: the first opening takes a moment,
-later ones use the cache. The format would let a reader decompress only the block a chapter is in, but these tools do
-not make use of it.
+Where to read: on Android phones and tablets with Readest EBK (a branch of the Readest reader that opens `.ebk` files);
+on Kobo, Kindle and the like with KOReader and the plug-in; on a computer, a double click opens the book in the EPUB
+reader it has. The KOReader plug-in and the computer turn the whole book into an EPUB file in a cache the first time it
+is opened and use the cache later; Readest EBK makes no EPUB file and reads from the `.ebk` file itself.
 
 EBK is one-way: an `.ebk` file gives an EPUB with the same files, but not the ZIP file it was made from (order and
 time stamps are not kept). EBK has no DRM and no encryption.
@@ -250,16 +261,18 @@ So a book of many PNG pictures is only 1–2% smaller than its EPUB. No book is 
 
 ### Getting the program
 
-There is no public release yet. `tools/dist.sh` packs the programs into `dist/`:
+Download from [Releases](https://github.com/Sraw/ebk/releases):
 
 | Package | Contents |
 |---|---|
-| `ebk-windows.zip` | `ebk.exe` |
-| `ebk-macos.zip` | `ebk` (Apple silicon and Intel); the package with `EBK.app` is built by the macOS job on GitHub (artifact `ebk-macos`) |
-| `ebk-linux.zip` | `ebk` (x86-64, statically linked) |
+| `ebk-windows.zip` | the converter `ebk.exe` |
+| `ebk-macos.zip` | the converter `ebk` (Apple silicon and Intel) and `EBK.app` |
+| `ebk-linux.zip` | the converter `ebk` (x86-64, statically linked) |
+| `Readest-EBK-arm64.apk` | the Android reader Readest EBK |
 | `ebk.koplugin.zip` | the KOReader plug-in |
 
-Each package has instructions in Chinese and English, `README.txt`.
+The packages of the converter and of the plug-in have instructions in Chinese and English, `README.txt`. To build them
+yourself, see "Building and testing" below.
 
 ### Converting EPUB to EBK
 
@@ -292,7 +305,16 @@ For the double click to work, once:
 | macOS | Drag `EBK.app` into Applications and open it once. From then on `.ebk` files open with it; EPUB files dropped on `EBK.app` are converted. | delete `EBK.app` |
 | Linux | Run `./ebk associate` once in a terminal. Leave the program where it is. | `./ebk associate --remove` |
 
-### Reading on e-readers and phones: KOReader
+### Reading on Android phones and tablets: Readest EBK
+
+Readest EBK is [Readest](https://github.com/readest/readest) with EBK support (source: [the `ebk` branch of
+Sraw/readest](https://github.com/Sraw/readest/tree/ebk)). Install `Readest-EBK-arm64.apk` (Android 8.0 or later, 64-bit
+ARM; the phone asks to allow apps from unknown sources), then import `.ebk` files into the library, or tap an `.ebk`
+file in a file manager and open it with Readest EBK. It installs next to Readest from the app store, with a library of
+its own, and reads EPUB, PDF and the rest as usual. Accounts and cloud sync are Readest's; an `.ebk` book synced there
+does not open in Readest itself.
+
+### Reading on e-ink readers: KOReader
 
 With the plug-in, KOReader opens `.ebk` files: Kobo, Kindle (with KOReader installed), Android and Linux. Unpack
 `ebk.koplugin.zip`, put the folder `ebk.koplugin` into KOReader's `plugins` folder and restart KOReader; the folder on
@@ -314,7 +336,9 @@ ebk folder/ a.epub                      # no command: convert these, as a double
 
 ## Known limits
 
-- Not tried on real devices: the programs for Kindle and Kobo ran under `qemu-user`, Android only on a virtual device.
+- Not tried on real devices: the programs for Kindle and Kobo ran under `qemu-user`, Android (Readest EBK and the
+  KOReader plug-in) only on a virtual device.
+- Readest EBK comes for 64-bit ARM only.
 - The Windows and macOS programs were tested on GitHub's machines (Windows x86-64 and ARM, macOS on Apple silicon and
   Intel), but never with a real double click of the mouse.
 - macOS stops the program once the first time (no developer signature).
