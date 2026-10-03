@@ -9,7 +9,7 @@ publish = false
 
 [dependencies]
 lepton_jpeg = "=0.5.8"
-# for src/bin/compare.rs: the fork of this repository next to the published crate
+# for src/bin/compare.rs (the fork of this repository next to the published crate) and src/bin/seed.rs
 fork = { package = "lepton_jpeg", path = "../../third_party/lepton_jpeg" }
 
 [profile.release]
